@@ -28,3 +28,10 @@ jobs:
 
       - name: Build
         run: dotnet build RoundedTB.sln --configuration Release --no-restore
+
+      # Release ships x64 and ARM64; make sure both runtime-specific builds still compile.
+      - name: Build (win-x64)
+        run: dotnet build RoundedTB/RoundedTB.csproj --configuration Release -r win-x64 --self-contained true
+
+      - name: Build (win-arm64)
+        run: dotnet build RoundedTB/RoundedTB.csproj --configuration Release -r win-arm64 --self-contained true

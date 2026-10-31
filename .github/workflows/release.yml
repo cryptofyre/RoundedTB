@@ -2,6 +2,10 @@ name: release
 
 # Tag-driven only. A normal push must never reach this workflow - ci.yml is the
 # one that runs on every push, and it stays build-verification only.
+#
+#   v*         -> published release
+#   canary*    -> published pre-release
+#   manual run -> draft release, for checking the artifacts before anything goes public
 on:
   push:
     tags:
@@ -18,9 +22,15 @@ permissions:
   contents: write   # required to create the release; the default read gives 403
 
 jobs:
-  release:
-    name: release-windows
+  build:
+    name: build-${{ matrix.rid }}
     runs-on: windows-latest
+    strategy:
+      matrix:
+        # ARM64 is built explicitly: upstream has never shipped it, and the app runs
+        # natively on Windows on Arm. Cross-publishing from the x64 runner is fine for
+        # a self-contained .NET app.
+        rid: [win-x64, win-arm64]
 
     steps:
       - name: Checkout
@@ -45,7 +55,7 @@ jobs:
       - name: Publish (self-contained)
         run: >
           dotnet publish RoundedTB/RoundedTB.csproj
-          -c Release -r win-x64 --self-contained true
+          -c Release -r ${{ matrix.rid }} --self-contained true
           -p:PublishSingleFile=true
           -p:EnableCompressionInSingleFile=true
           -p:DebugType=none
@@ -56,18 +66,51 @@ jobs:
       - name: Archive
         shell: pwsh
         run: |
-          Compress-Archive -Path publish/RoundedTB -DestinationPath "RoundedTB_${{ steps.ver.outputs.tag }}_win-x64.zip"
+          Compress-Archive -Path publish/RoundedTB -DestinationPath "RoundedTB_${{ steps.ver.outputs.tag }}_${{ matrix.rid }}.zip"
 
-      - name: Create draft release
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: RoundedTB-${{ matrix.rid }}
+          path: RoundedTB_*_${{ matrix.rid }}.zip
+          if-no-files-found: error
+
+  release:
+    name: create-release
+    needs: build
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Resolve tag
+        id: ver
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then tag="${{ inputs.tag }}"; else tag="${{ github.ref_name }}"; fi
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: RoundedTB-*
+          merge-multiple: true
+
+      - name: Create release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.ver.outputs.tag }}
-          draft: true
+          draft: ${{ github.event_name == 'workflow_dispatch' }}
+          prerelease: ${{ startsWith(steps.ver.outputs.tag, 'canary') }}
           generate_release_notes: true
           body: |
-            Self-contained build for Windows x64 - no .NET runtime needed.
+            Self-contained builds - no .NET runtime needed.
+
+            | Download | For |
+            |---|---|
+            | `RoundedTB_${{ steps.ver.outputs.tag }}_win-x64.zip` | Most PCs (Intel / AMD) |
+            | `RoundedTB_${{ steps.ver.outputs.tag }}_win-arm64.zip` | Windows on Arm (Snapdragon etc.) |
+
             Extract the whole `RoundedTB` folder and run `RoundedTB.exe`; the exe
             will not start on its own without the DLLs next to it.
 
             The binary is unsigned, so SmartScreen will warn on first run.
-          files: RoundedTB_*_win-x64.zip
+          files: RoundedTB_*.zip
+          fail_on_unmatched_files: true
