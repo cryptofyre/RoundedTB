@@ -102,12 +102,15 @@ namespace RoundedTB
                 }
 
                 IUIAutomationElementArray? children = null;
+                IUIAutomationElementArray? repeaterChildren = null;
                 IUIAutomationElement? child = null;
+                IUIAutomationCondition? trueCondition = null;
                 try
                 {
+                    trueCondition = _uia.CreateTrueCondition();
                     children = _taskbarFrame.FindAll(
                         Interop.UIAutomationClient.TreeScope.TreeScope_Children,
-                        _uia.CreateTrueCondition());
+                        trueCondition);
                     tagRECT? leftRect = null;
                     tagRECT? rightRect = null;
                     int len = children.Length;
@@ -116,10 +119,42 @@ namespace RoundedTB
                         return null;
                     }
 
+                    // Newer Insider builds put every taskbar item (Start, Search, apps AND the system tray)
+                    // inside a single TaskbarFrameRepeater child, so measuring the frame's direct children
+                    // just returns the whole taskbar. Flatten that layer so the items themselves get measured.
+                    if (len == 1)
+                    {
+                        child = children.GetElement(0);
+                        if (child.CurrentAutomationId == "TaskbarFrameRepeater")
+                        {
+                            repeaterChildren = child.FindAll(
+                                Interop.UIAutomationClient.TreeScope.TreeScope_Children,
+                                trueCondition);
+                            len = repeaterChildren.Length;
+                        }
+                        Marshal.ReleaseComObject(child);
+                        child = null;
+                    }
+                    IUIAutomationElementArray items = repeaterChildren ?? children;
+
                     for (int i = 0; i < len; i++)
                     {
-                        child = children.GetElement(i);
+                        child = items.GetElement(i);
+                        // The tray icons now live in the same XAML tree; they're masked separately via TrayRect.
+                        if (child.CurrentAutomationId == "SystemTrayIcon" || (child.CurrentClassName ?? "").StartsWith("SystemTray."))
+                        {
+                            Marshal.ReleaseComObject(child);
+                            child = null;
+                            continue;
+                        }
                         tagRECT r = child.CurrentBoundingRectangle;
+                        Marshal.ReleaseComObject(child);
+                        child = null;
+                        if (r.right <= r.left)
+                        {
+                            // Collapsed or off-screen element
+                            continue;
+                        }
                         if (leftRect == null || r.left < leftRect.Value.left)
                         {
                             leftRect = r;
@@ -128,8 +163,6 @@ namespace RoundedTB
                         {
                             rightRect = r;
                         }
-                        Marshal.ReleaseComObject(child);
-                        child = null;
                     }
                     if (leftRect == null || rightRect == null)
                     {
@@ -157,9 +190,17 @@ namespace RoundedTB
                     {
                         Marshal.ReleaseComObject(child);
                     }
+                    if (repeaterChildren != null)
+                    {
+                        Marshal.ReleaseComObject(repeaterChildren);
+                    }
                     if (children != null)
                     {
                         Marshal.ReleaseComObject(children);
+                    }
+                    if (trueCondition != null)
+                    {
+                        Marshal.ReleaseComObject(trueCondition);
                     }
                 }
             }

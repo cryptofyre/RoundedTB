@@ -366,9 +366,26 @@ namespace RoundedTB
         public IntPtr HwndHook(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
         {
             const int WM_HOTKEY = 0x0312;
+            const int WM_DISPLAYCHANGE = 0x007E;
+            const int WM_DPICHANGED = 0x02E0;
+            const int WM_SETTINGCHANGE = 0x001A;
+            const int SPI_SETWORKAREA = 0x002F;
 
             switch (msg)
             {
+                // Resolution, scaling or work area changed - have the worker rebuild and redraw the taskbars
+                case WM_DISPLAYCHANGE:
+                case WM_DPICHANGED:
+                    mw.background?.RequestDisplayRedraw();
+                    break;
+
+                case WM_SETTINGCHANGE:
+                    if (wParam.ToInt32() == SPI_SETWORKAREA)
+                    {
+                        mw.background?.RequestDisplayRedraw();
+                    }
+                    break;
+
                 case WM_HOTKEY:
                     Debug.WriteLine(msg);
                     switch (wParam.ToInt32())

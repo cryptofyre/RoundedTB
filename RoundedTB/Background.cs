@@ -28,6 +28,14 @@ namespace RoundedTB
         private int regenCooldownTicks;
         private bool regenDegraded;
 
+        // Display changes (resolution, scaling, monitors, work area). Explorer re-lays out the taskbar
+        // asynchronously after one of these, so after regenerating we keep forcing redraws for a short
+        // settle window instead of trusting the first (often intermediate) rects we read.
+        private const int DisplaySettleTicks = 30;       // 3s
+        private const int DisplaySettleRedrawEvery = 3;  // 300ms
+        private volatile bool displayChangeRequested;
+        private int displaySettleTicks;
+
         // Hover state is transient and must never be written into the persisted settings.
         private bool hoverShowTray;
         private bool hoverShowWidgets;
@@ -109,6 +117,31 @@ namespace RoundedTB
                         // Work with static values to avoid some null reference exceptions
                         List<Types.Taskbar> taskbars = mw.taskbarDetails;
                         Types.Settings settings = mw.activeSettings;
+
+                        // A scale change doesn't always arrive as a window message, so also poll the DPI
+                        if (!displayChangeRequested && TaskbarDpiChanged(taskbars))
+                        {
+                            displayChangeRequested = true;
+                        }
+
+                        // If the display configuration changed, rebuild everything so handles, rects and
+                        // scale factors are current, then redraw repeatedly while Explorer settles.
+                        if (displayChangeRequested)
+                        {
+                            displayChangeRequested = false;
+                            taskbars.ForEach(t => t.Dispose());
+                            taskbars = Taskbar.GenerateTaskbarInfo(mw.interaction.IsWindows11());
+                            mw.interaction.RefreshUiTray(isForceReset: true);
+                            displaySettleTicks = DisplaySettleTicks;
+                            mw.interaction.AddLog("Display changed - regenerating taskbar info");
+                            Debug.WriteLine("Display changed - regenerating taskbar info");
+                        }
+                        redrawOverride = false;
+                        if (displaySettleTicks > 0)
+                        {
+                            redrawOverride = displaySettleTicks % DisplaySettleRedrawEvery == 0;
+                            displaySettleTicks--;
+                        }
 
                         // If the number of taskbars has changed, regenerate taskbar information
                         if (Taskbar.TaskbarCountOrHandleChanged(taskbars.Count, taskbars[0].TaskbarHwnd))
@@ -347,6 +380,35 @@ namespace RoundedTB
                     throw;
                 }
             }
+        }
+
+        /// <summary>
+        /// Asks the worker to rebuild and redraw every taskbar, e.g. after a resolution or scaling change.
+        /// Safe to call from any thread.
+        /// </summary>
+        public void RequestDisplayRedraw()
+        {
+            displayChangeRequested = true;
+        }
+
+        /// <summary>
+        /// Checks whether any taskbar's DPI no longer matches the scale factor it was measured with.
+        /// </summary>
+        private static bool TaskbarDpiChanged(List<Types.Taskbar> taskbars)
+        {
+            foreach (Types.Taskbar taskbar in taskbars)
+            {
+                if (taskbar.TaskbarHwnd == IntPtr.Zero)
+                {
+                    continue;
+                }
+                int dpi = LocalPInvoke.GetDpiForWindow(taskbar.TaskbarHwnd);
+                if (dpi != 0 && Math.Abs(dpi / 96.00 - taskbar.ScaleFactor) > 0.001)
+                {
+                    return true;
+                }
+            }
+            return false;
         }
 
         /// <summary>
