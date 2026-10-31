@@ -1,46 +1,59 @@
-![RoundedTB](https://cdn.discordapp.com/attachments/272509873479221249/891555515799318568/unknown.png)
-
 # RoundedTB
-#### Add margins, rounded corners and segments to your taskbars!
 
+Add margins, rounded corners and segments to your Windows 11 taskbar.
 
+![RoundedTB in dynamic mode](https://user-images.githubusercontent.com/31840547/134795141-76349eaf-12da-40f8-b2a0-d7b7c268d152.png)
 
-![image](https://user-images.githubusercontent.com/31840547/134795141-76349eaf-12da-40f8-b2a0-d7b7c268d152.png)
+## Download
 
-## How do I get it?
+Grab the latest build from the [releases page](https://github.com/cryptofyre/RoundedTB/releases/latest).
 
-You can download the latest version from the [release page](https://github.com/Gniang/RoundedTB/releases).
+| File | For |
+|---|---|
+| `RoundedTB_<version>_win-x64.zip` | Most PCs (Intel / AMD) |
+| `RoundedTB_<version>_win-arm64.zip` | Windows on Arm (Snapdragon etc.) |
 
-The Microsoft Store's RoundedTB is not mine. It's the [original version](https://github.com/RoundedTB/RoundedTB).
+Builds are self-contained, so no .NET runtime is needed. Extract the whole `RoundedTB` folder and run `RoundedTB.exe` — the exe won't start without the DLLs next to it. The binary is unsigned, so SmartScreen will warn on first run.
 
+The RoundedTB on the Microsoft Store is the [original project](https://github.com/RoundedTB/RoundedTB), not this fork.
+
+## What's different in this fork
+
+- **Works on current Insider builds.** Dynamic mode masks the Start and Search buttons correctly again after the taskbar's layout changes.
+- **Redraws on display changes.** Changing resolution, scaling or the work area rebuilds the taskbar mask instead of leaving it stale.
+- **Native ARM64 builds** alongside x64.
+- Plus the stability fixes from [Gniang's fork](https://github.com/Gniang/RoundedTB): .NET 10, a self-healing background worker, atomic settings saves and migration of old configs.
+
+Settings live in `%LOCALAPPDATA%\RoundedTB\rtb.json`.
 
 ## Known issues
-- Auto-hiding compatibillity. (Widnows taskbar setting)
-  - not working. 
-- Windows 10.
-  - Windows 10 has not been verified. Probably will no longer be supported.
-- TranslucentTB compatibility.
-- Rounded corners are not antialiased.
-  - Due to a Windows limitation. ([#4](https://github.com/torchgm/RoundedTB/issues/4))
-- Dynamic mode won't hide the left side of the taskbar if fisrst started(the taskbar alignment has never been changed).
-  - This can be worked around by changing the alignment to Left and back to Center. ([#98](https://github.com/torchgm/RoundedTB/issues/98)) 
-- When using dynamic mode, the taskbar may occasionally become too large, too small or not update.
-  - This can usually be fixed by moving a window to or from that monitor or briefly changing the taskbar alignment.
-- Dynamic mode may not be released when RoundedTB is exited.
-  - Restarting RoundedTB doesn't help, try restarting the PC.
-- The top of the taskbar is not rounded.
-  - Set the top margin to a larger value (30-50?) , you can adjust the appearance in that session. But it may be a different value when restarted the Windows.
 
-## Other info
+- **Windows auto-hide taskbar** isn't supported.
+- **Windows 10** hasn't been tested and probably doesn't work.
+- **Rounded corners aren't antialiased.** This is a Windows limitation ([torchgm/RoundedTB#4](https://github.com/torchgm/RoundedTB/issues/4)).
+- **The top of the taskbar isn't rounded.** Raising the top margin helps, but the value that looks right can change after a restart.
+- **Dynamic mode may not cut off the left side on first run** if you've never changed the taskbar alignment. Switch alignment to Left and back to Center to fix it ([torchgm/RoundedTB#98](https://github.com/torchgm/RoundedTB/issues/98)).
+- **Dynamic mode can stay applied after RoundedTB exits.** Restarting Explorer or signing out clears it.
+- **TranslucentTB** works with the compatibility option enabled, but may flicker when the taskbar updates.
 
-RoundedTB was created by torchgm. thanks.
+If anything breaks badly, press <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>Esc</kbd>, end RoundedTB and restart Windows Explorer. RoundedTB makes no permanent changes (apart from running on startup if you turn that on), so a restart always clears it.
 
-https://github.com/RoundedTB/RoundedTB
+## Building
 
-torchgm says "RoundedTB is just a hobby of mine, and I'm certainly not an expert in this field, so I'm really sorry if you encounter a bug!".
-me too.
+Requires the .NET 10 SDK.
 
-If anything breaks catastrophically, press <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>Esc</kbd> to open Task Manager, end RoundedTB and then restart Explorer. At worst, just reboot your PC. RoundedTB makes no permanent changes (though it will run on startup if you enable it from the tray icon), so restarting should clear any issues.
+```
+dotnet build RoundedTB/RoundedTB.csproj -c Release
+```
 
+To produce a release-style build for one architecture:
 
+```
+dotnet publish RoundedTB/RoundedTB.csproj -c Release -r win-arm64 --self-contained true -p:PublishSingleFile=true -p:EnableCompressionInSingleFile=true
+```
 
+Releases are built by GitHub Actions: pushing a `v*` tag publishes a release with x64 and ARM64 zips, and a `canary*` tag publishes a pre-release.
+
+## Credits
+
+RoundedTB was created by [torchgm](https://github.com/torchgm) — see the [original project](https://github.com/RoundedTB/RoundedTB). This fork builds on the maintenance work in [Gniang/RoundedTB](https://github.com/Gniang/RoundedTB).
