@@ -34,6 +34,7 @@ namespace RoundedTB
         private const int DisplaySettleTicks = 30;       // 3s
         private const int DisplaySettleRedrawEvery = 3;  // 300ms
         private volatile bool displayChangeRequested;
+        private volatile bool settingsRedrawRequested;
         private int displaySettleTicks;
 
         // Hover state is transient and must never be written into the persisted settings.
@@ -80,14 +81,11 @@ namespace RoundedTB
                                     LocalPInvoke.GetClassName(hwnd, windowClass, 1024);
                                     LocalPInvoke.GetWindowText(hwnd, windowTitle, 1024);
 
-                                    if (windowClass.ToString().Contains("HwndWrapper[RoundedTB.exe") && windowTitle.ToString() == "RoundedTB_SettingsRequest")
+                                    if (windowClass.ToString().StartsWith("HwndWrapper[RoundedTB") && windowTitle.ToString() == "RoundedTB_SettingsRequest")
                                     {
                                         mw.Dispatcher.Invoke(() =>
                                         {
-                                            if (mw.Visibility != Visibility.Visible)
-                                            {
-                                                mw.ShowMenuItem_Click(null, null);
-                                            }
+                                            mw.ShowSettings();
                                         });
                                         LocalPInvoke.SetWindowText(hwnd, "RoundedTB");
                                     }
@@ -137,6 +135,11 @@ namespace RoundedTB
                             Debug.WriteLine("Display changed - regenerating taskbar info");
                         }
                         redrawOverride = false;
+                        if (settingsRedrawRequested)
+                        {
+                            settingsRedrawRequested = false;
+                            redrawOverride = true;
+                        }
                         if (displaySettleTicks > 0)
                         {
                             redrawOverride = displaySettleTicks % DisplaySettleRedrawEvery == 0;
@@ -389,6 +392,15 @@ namespace RoundedTB
         public void RequestDisplayRedraw()
         {
             displayChangeRequested = true;
+        }
+
+        /// <summary>
+        /// Asks the worker to redraw every taskbar once with the current settings, after a live edit
+        /// in the settings flyout. Safe to call from any thread.
+        /// </summary>
+        public void RequestSettingsRedraw()
+        {
+            settingsRedrawRequested = true;
         }
 
         /// <summary>

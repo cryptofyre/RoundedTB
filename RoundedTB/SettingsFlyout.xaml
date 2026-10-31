@@ -1,0 +1,479 @@
+<Window x:Class="RoundedTB.SettingsFlyout"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:shell="clr-namespace:System.Windows.Shell;assembly=PresentationFramework"
+        Title="RoundedTB Settings"
+        Width="360"
+        SizeToContent="Height"
+        WindowStyle="None"
+        ResizeMode="NoResize"
+        ShowInTaskbar="False"
+        ShowActivated="True"
+        Topmost="True"
+        Background="Transparent"
+        FontFamily="Segoe UI Variable Text, Segoe UI"
+        FontSize="13"
+        UseLayoutRounding="True"
+        SnapsToDevicePixels="True">
+    <shell:WindowChrome.WindowChrome>
+        <shell:WindowChrome CaptionHeight="0" GlassFrameThickness="-1" ResizeBorderThickness="0" CornerRadius="0" UseAeroCaptionButtons="False" />
+    </shell:WindowChrome.WindowChrome>
+
+    <Window.Resources>
+        <!-- Placeholder colours; SettingsFlyout.ApplyTheme swaps these for the system light/dark palette. -->
+        <SolidColorBrush x:Key="FlyoutText" Color="#FFFFFF" />
+        <SolidColorBrush x:Key="FlyoutTextSecondary" Color="#C5FFFFFF" />
+        <SolidColorBrush x:Key="FlyoutTextDisabled" Color="#5DFFFFFF" />
+        <SolidColorBrush x:Key="FlyoutCard" Color="#0DFFFFFF" />
+        <SolidColorBrush x:Key="FlyoutCardStroke" Color="#19000000" />
+        <SolidColorBrush x:Key="FlyoutControl" Color="#0FFFFFFF" />
+        <SolidColorBrush x:Key="FlyoutControlHover" Color="#15FFFFFF" />
+        <SolidColorBrush x:Key="FlyoutControlStroke" Color="#9AFFFFFF" />
+        <SolidColorBrush x:Key="FlyoutTrack" Color="#8BFFFFFF" />
+        <SolidColorBrush x:Key="FlyoutAccent" Color="#60CDFF" />
+        <SolidColorBrush x:Key="FlyoutOnAccent" Color="#000000" />
+        <SolidColorBrush x:Key="FlyoutThumb" Color="#454545" />
+        <SolidColorBrush x:Key="FlyoutFallback" Color="#202020" />
+        <SolidColorBrush x:Key="FlyoutFooter" Color="#0A000000" />
+
+        <Style TargetType="TextBlock">
+            <Setter Property="Foreground" Value="{DynamicResource FlyoutText}" />
+            <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+            <Style.Triggers>
+                <Trigger Property="IsEnabled" Value="False">
+                    <Setter Property="Foreground" Value="{DynamicResource FlyoutTextDisabled}" />
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+
+        <Style x:Key="SectionHeader" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="{DynamicResource FlyoutTextSecondary}" />
+            <Setter Property="FontSize" Value="12" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="Margin" Value="4,14,0,6" />
+        </Style>
+
+        <Style x:Key="Card" TargetType="Border">
+            <Setter Property="Background" Value="{DynamicResource FlyoutCard}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource FlyoutCardStroke}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="6" />
+            <Setter Property="Padding" Value="14,6" />
+        </Style>
+
+        <!-- Windows 11 style toggle switch, label on the left. -->
+        <Style x:Key="ToggleSwitch" TargetType="CheckBox">
+            <Setter Property="Foreground" Value="{DynamicResource FlyoutText}" />
+            <Setter Property="Margin" Value="0,6" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="Focusable" Value="True" />
+            <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="CheckBox">
+                        <Grid Background="Transparent">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <ContentPresenter VerticalAlignment="Center" Margin="0,0,12,0" TextElement.Foreground="{TemplateBinding Foreground}" />
+                            <Border x:Name="Track" Grid.Column="1" Width="40" Height="20" CornerRadius="10"
+                                    Background="{DynamicResource FlyoutControl}" BorderBrush="{DynamicResource FlyoutControlStroke}" BorderThickness="1">
+                                <Ellipse x:Name="Knob" Width="12" Height="12" HorizontalAlignment="Left" Margin="3,0,0,0"
+                                         Fill="{DynamicResource FlyoutTextSecondary}" />
+                            </Border>
+                        </Grid>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Track" Property="Background" Value="{DynamicResource FlyoutControlHover}" />
+                                <Setter TargetName="Knob" Property="Width" Value="14" />
+                                <Setter TargetName="Knob" Property="Height" Value="14" />
+                            </Trigger>
+                            <Trigger Property="IsChecked" Value="True">
+                                <Setter TargetName="Track" Property="Background" Value="{DynamicResource FlyoutAccent}" />
+                                <Setter TargetName="Track" Property="BorderBrush" Value="{DynamicResource FlyoutAccent}" />
+                                <Setter TargetName="Knob" Property="Fill" Value="{DynamicResource FlyoutOnAccent}" />
+                                <Setter TargetName="Knob" Property="HorizontalAlignment" Value="Right" />
+                                <Setter TargetName="Knob" Property="Margin" Value="0,0,3,0" />
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter Property="Opacity" Value="0.45" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- One option of a segmented control (radio buttons in a shared group). -->
+        <Style x:Key="Segment" TargetType="RadioButton">
+            <Setter Property="Foreground" Value="{DynamicResource FlyoutText}" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="RadioButton">
+                        <Border x:Name="Bg" CornerRadius="4" Background="Transparent" Padding="10,5" Margin="2">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" TextElement.Foreground="{TemplateBinding Foreground}" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Bg" Property="Background" Value="{DynamicResource FlyoutControlHover}" />
+                            </Trigger>
+                            <Trigger Property="IsChecked" Value="True">
+                                <Setter TargetName="Bg" Property="Background" Value="{DynamicResource FlyoutAccent}" />
+                                <Setter Property="Foreground" Value="{DynamicResource FlyoutOnAccent}" />
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter Property="Opacity" Value="0.45" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="SegmentHost" TargetType="Border">
+            <Setter Property="Background" Value="{DynamicResource FlyoutControl}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource FlyoutCardStroke}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="6" />
+        </Style>
+
+        <Style x:Key="SliderRepeat" TargetType="RepeatButton">
+            <Setter Property="Focusable" Value="False" />
+            <Setter Property="IsTabStop" Value="False" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="RepeatButton">
+                        <Grid Background="Transparent">
+                            <Border Height="4" CornerRadius="2" Background="{TemplateBinding Background}" />
+                        </Grid>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style TargetType="Slider">
+            <Setter Property="IsSnapToTickEnabled" Value="True" />
+            <Setter Property="TickFrequency" Value="1" />
+            <Setter Property="SmallChange" Value="1" />
+            <Setter Property="LargeChange" Value="2" />
+            <Setter Property="IsMoveToPointEnabled" Value="True" />
+            <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Slider">
+                        <Track x:Name="PART_Track" Height="22">
+                            <Track.DecreaseRepeatButton>
+                                <RepeatButton Style="{StaticResource SliderRepeat}" Background="{DynamicResource FlyoutAccent}" Command="Slider.DecreaseLarge" />
+                            </Track.DecreaseRepeatButton>
+                            <Track.IncreaseRepeatButton>
+                                <RepeatButton Style="{StaticResource SliderRepeat}" Background="{DynamicResource FlyoutTrack}" Command="Slider.IncreaseLarge" />
+                            </Track.IncreaseRepeatButton>
+                            <Track.Thumb>
+                                <Thumb>
+                                    <Thumb.Template>
+                                        <ControlTemplate TargetType="Thumb">
+                                            <Grid Width="20" Height="20">
+                                                <Ellipse Fill="{DynamicResource FlyoutThumb}" Stroke="{DynamicResource FlyoutCardStroke}" StrokeThickness="1" />
+                                                <Ellipse x:Name="Dot" Width="10" Height="10" Fill="{DynamicResource FlyoutAccent}" />
+                                            </Grid>
+                                            <ControlTemplate.Triggers>
+                                                <Trigger Property="IsMouseOver" Value="True">
+                                                    <Setter TargetName="Dot" Property="Width" Value="12" />
+                                                    <Setter TargetName="Dot" Property="Height" Value="12" />
+                                                </Trigger>
+                                                <Trigger Property="IsDragging" Value="True">
+                                                    <Setter TargetName="Dot" Property="Width" Value="8" />
+                                                    <Setter TargetName="Dot" Property="Height" Value="8" />
+                                                </Trigger>
+                                            </ControlTemplate.Triggers>
+                                        </ControlTemplate>
+                                    </Thumb.Template>
+                                </Thumb>
+                            </Track.Thumb>
+                        </Track>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter Property="Opacity" Value="0.45" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="FooterButton" TargetType="Button">
+            <Setter Property="Foreground" Value="{DynamicResource FlyoutText}" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Bg" CornerRadius="4" Background="Transparent" Padding="10,6">
+                            <ContentPresenter VerticalAlignment="Center" TextElement.Foreground="{TemplateBinding Foreground}" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Bg" Property="Background" Value="{DynamicResource FlyoutControlHover}" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="ExpanderHeader" TargetType="ToggleButton">
+            <Setter Property="Foreground" Value="{DynamicResource FlyoutText}" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ToggleButton">
+                        <Border x:Name="Bg" Background="{DynamicResource FlyoutCard}" BorderBrush="{DynamicResource FlyoutCardStroke}"
+                                BorderThickness="1" CornerRadius="6" Padding="14,10">
+                            <Grid>
+                                <ContentPresenter VerticalAlignment="Center" TextElement.Foreground="{TemplateBinding Foreground}" />
+                                <TextBlock x:Name="Chevron" Text="&#xE70D;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="11"
+                                           HorizontalAlignment="Right" VerticalAlignment="Center" />
+                            </Grid>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Bg" Property="Background" Value="{DynamicResource FlyoutControlHover}" />
+                            </Trigger>
+                            <Trigger Property="IsChecked" Value="True">
+                                <Setter TargetName="Chevron" Property="Text" Value="&#xE70E;" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- Label + current value above a slider. -->
+        <Style x:Key="SliderLabel" TargetType="DockPanel">
+            <Setter Property="Margin" Value="0,8,0,0" />
+        </Style>
+    </Window.Resources>
+
+    <Border x:Name="RootBorder" Background="Transparent">
+        <Grid>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="*" />
+                <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
+
+            <ScrollViewer x:Name="ContentScroller" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Focusable="False">
+                <StackPanel Margin="16,14,16,16">
+
+                    <!-- Header -->
+                    <DockPanel>
+                        <TextBlock Text="RoundedTB" FontSize="20" FontWeight="SemiBold" FontFamily="Segoe UI Variable Display, Segoe UI" VerticalAlignment="Center" />
+                        <Border Style="{StaticResource SegmentHost}" HorizontalAlignment="Right" VerticalAlignment="Center">
+                            <StackPanel Orientation="Horizontal">
+                                <RadioButton x:Name="basicModeRadio" GroupName="Mode" Style="{StaticResource Segment}" Content="Basic" Checked="Mode_Checked"
+                                             ToolTip="Round the whole taskbar as one shape" />
+                                <RadioButton x:Name="dynamicModeRadio" GroupName="Mode" Style="{StaticResource Segment}" Content="Dynamic" Checked="Mode_Checked"
+                                             ToolTip="Shrink the taskbar around its icons and split it into segments" />
+                            </StackPanel>
+                        </Border>
+                    </DockPanel>
+
+                    <!-- Shape -->
+                    <TextBlock Style="{StaticResource SectionHeader}" Text="Shape" />
+                    <Border Style="{StaticResource Card}" Padding="14,4,14,12">
+                        <StackPanel>
+                            <DockPanel Style="{StaticResource SliderLabel}">
+                                <TextBlock x:Name="radiusValue" DockPanel.Dock="Right" Foreground="{DynamicResource FlyoutTextSecondary}" />
+                                <TextBlock Text="Corner radius" />
+                            </DockPanel>
+                            <Slider x:Name="radiusSlider" Minimum="0" Maximum="32" ValueChanged="MainShape_ValueChanged" />
+
+                            <DockPanel Style="{StaticResource SliderLabel}" Margin="0,10,0,0">
+                                <CheckBox x:Name="linkMarginsToggle" DockPanel.Dock="Right" Style="{StaticResource ToggleSwitch}" Margin="0"
+                                          Content="Link all sides" Foreground="{DynamicResource FlyoutTextSecondary}" Click="LinkMargins_Click" />
+                                <TextBlock Text="Margins" VerticalAlignment="Center" />
+                            </DockPanel>
+
+                            <StackPanel x:Name="linkedMarginPanel">
+                                <DockPanel Style="{StaticResource SliderLabel}">
+                                    <TextBlock x:Name="marginAllValue" DockPanel.Dock="Right" Foreground="{DynamicResource FlyoutTextSecondary}" />
+                                    <TextBlock Text="All sides" Foreground="{DynamicResource FlyoutTextSecondary}" />
+                                </DockPanel>
+                                <Slider x:Name="marginAllSlider" Minimum="0" Maximum="20" ValueChanged="MainShape_ValueChanged" />
+                            </StackPanel>
+
+                            <Grid x:Name="splitMarginPanel" Visibility="Collapsed">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="16" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                </Grid.RowDefinitions>
+                                <StackPanel Grid.Row="0" Grid.Column="0">
+                                    <DockPanel Style="{StaticResource SliderLabel}">
+                                        <TextBlock x:Name="marginTopValue" DockPanel.Dock="Right" Foreground="{DynamicResource FlyoutTextSecondary}" />
+                                        <TextBlock Text="Top" Foreground="{DynamicResource FlyoutTextSecondary}" />
+                                    </DockPanel>
+                                    <Slider x:Name="marginTopSlider" Minimum="0" Maximum="20" ValueChanged="MainShape_ValueChanged" />
+                                </StackPanel>
+                                <StackPanel Grid.Row="0" Grid.Column="2">
+                                    <DockPanel Style="{StaticResource SliderLabel}">
+                                        <TextBlock x:Name="marginBottomValue" DockPanel.Dock="Right" Foreground="{DynamicResource FlyoutTextSecondary}" />
+                                        <TextBlock Text="Bottom" Foreground="{DynamicResource FlyoutTextSecondary}" />
+                                    </DockPanel>
+                                    <Slider x:Name="marginBottomSlider" Minimum="0" Maximum="20" ValueChanged="MainShape_ValueChanged" />
+                                </StackPanel>
+                                <StackPanel Grid.Row="1" Grid.Column="0">
+                                    <DockPanel Style="{StaticResource SliderLabel}">
+                                        <TextBlock x:Name="marginLeftValue" DockPanel.Dock="Right" Foreground="{DynamicResource FlyoutTextSecondary}" />
+                                        <TextBlock Text="Left" Foreground="{DynamicResource FlyoutTextSecondary}" />
+                                    </DockPanel>
+                                    <Slider x:Name="marginLeftSlider" Minimum="0" Maximum="20" ValueChanged="MainShape_ValueChanged" />
+                                </StackPanel>
+                                <StackPanel Grid.Row="1" Grid.Column="2">
+                                    <DockPanel Style="{StaticResource SliderLabel}">
+                                        <TextBlock x:Name="marginRightValue" DockPanel.Dock="Right" Foreground="{DynamicResource FlyoutTextSecondary}" />
+                                        <TextBlock Text="Right" Foreground="{DynamicResource FlyoutTextSecondary}" />
+                                    </DockPanel>
+                                    <Slider x:Name="marginRightSlider" Minimum="0" Maximum="20" ValueChanged="MainShape_ValueChanged" />
+                                </StackPanel>
+                            </Grid>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- Segments (dynamic mode only) -->
+                    <StackPanel x:Name="segmentsSection">
+                        <TextBlock Style="{StaticResource SectionHeader}" Text="Segments" />
+                        <Border Style="{StaticResource Card}">
+                            <StackPanel>
+                                <CheckBox x:Name="showTrayToggle" Style="{StaticResource ToggleSwitch}" Content="Show system tray" Click="Toggle_Click" />
+                                <CheckBox x:Name="showWidgetsToggle" Style="{StaticResource ToggleSwitch}" Content="Show widgets" Click="Toggle_Click" />
+                                <CheckBox x:Name="showClockToggle" Style="{StaticResource ToggleSwitch}" Content="Show clock on other monitors" Click="Toggle_Click" />
+                            </StackPanel>
+                        </Border>
+                    </StackPanel>
+
+                    <!-- Behaviour -->
+                    <TextBlock Style="{StaticResource SectionHeader}" Text="Behaviour" />
+                    <Border Style="{StaticResource Card}">
+                        <StackPanel>
+                            <CheckBox x:Name="fillMaximisedToggle" Style="{StaticResource ToggleSwitch}" Content="Fill when a window is maximised" Click="Toggle_Click" />
+                            <CheckBox x:Name="fillTaskSwitchToggle" Style="{StaticResource ToggleSwitch}" Content="Also fill during Alt+Tab" Click="Toggle_Click" Margin="16,6,0,6" />
+                            <CheckBox x:Name="startupToggle" Style="{StaticResource ToggleSwitch}" Content="Run at startup" Click="Startup_Click" />
+                        </StackPanel>
+                    </Border>
+
+                    <!-- Advanced -->
+                    <ToggleButton x:Name="advancedToggle" Style="{StaticResource ExpanderHeader}" Margin="0,16,0,0" Content="Advanced" Click="Advanced_Click" />
+                    <StackPanel x:Name="advancedPanel" Visibility="Collapsed">
+                        <TextBlock x:Name="segmentLayoutHeader" Style="{StaticResource SectionHeader}" Text="Per-segment layout (dynamic mode)" />
+                        <Border x:Name="segmentLayoutCard" Style="{StaticResource Card}" Padding="14,10,14,12">
+                            <StackPanel>
+                                <Border Style="{StaticResource SegmentHost}" HorizontalAlignment="Stretch">
+                                    <UniformGrid Rows="1">
+                                        <RadioButton x:Name="segAppsRadio" GroupName="Segment" Style="{StaticResource Segment}" Content="Apps" Checked="Segment_Checked" />
+                                        <RadioButton x:Name="segTrayRadio" GroupName="Segment" Style="{StaticResource Segment}" Content="Tray" Checked="Segment_Checked" />
+                                        <RadioButton x:Name="segWidgetsRadio" GroupName="Segment" Style="{StaticResource Segment}" Content="Widgets" Checked="Segment_Checked" />
+                                        <RadioButton x:Name="segClockRadio" GroupName="Segment" Style="{StaticResource Segment}" Content="Clock" Checked="Segment_Checked" />
+                                    </UniformGrid>
+                                </Border>
+
+                                <DockPanel Style="{StaticResource SliderLabel}">
+                                    <TextBlock x:Name="segRadiusValue" DockPanel.Dock="Right" Foreground="{DynamicResource FlyoutTextSecondary}" />
+                                    <TextBlock Text="Corner radius" />
+                                </DockPanel>
+                                <Slider x:Name="segRadiusSlider" Minimum="0" Maximum="32" ValueChanged="SegmentShape_ValueChanged" />
+
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="16" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
+                                    </Grid.RowDefinitions>
+                                    <StackPanel Grid.Row="0" Grid.Column="0">
+                                        <DockPanel Style="{StaticResource SliderLabel}">
+                                            <TextBlock x:Name="segTopValue" DockPanel.Dock="Right" Foreground="{DynamicResource FlyoutTextSecondary}" />
+                                            <TextBlock Text="Top" Foreground="{DynamicResource FlyoutTextSecondary}" />
+                                        </DockPanel>
+                                        <Slider x:Name="segTopSlider" Minimum="0" Maximum="20" ValueChanged="SegmentShape_ValueChanged" />
+                                    </StackPanel>
+                                    <StackPanel Grid.Row="0" Grid.Column="2">
+                                        <DockPanel Style="{StaticResource SliderLabel}">
+                                            <TextBlock x:Name="segBottomValue" DockPanel.Dock="Right" Foreground="{DynamicResource FlyoutTextSecondary}" />
+                                            <TextBlock Text="Bottom" Foreground="{DynamicResource FlyoutTextSecondary}" />
+                                        </DockPanel>
+                                        <Slider x:Name="segBottomSlider" Minimum="0" Maximum="20" ValueChanged="SegmentShape_ValueChanged" />
+                                    </StackPanel>
+                                    <StackPanel Grid.Row="1" Grid.Column="0">
+                                        <DockPanel Style="{StaticResource SliderLabel}">
+                                            <TextBlock x:Name="segLeftValue" DockPanel.Dock="Right" Foreground="{DynamicResource FlyoutTextSecondary}" />
+                                            <TextBlock Text="Left" Foreground="{DynamicResource FlyoutTextSecondary}" />
+                                        </DockPanel>
+                                        <Slider x:Name="segLeftSlider" Minimum="0" Maximum="20" ValueChanged="SegmentShape_ValueChanged" />
+                                    </StackPanel>
+                                    <StackPanel Grid.Row="1" Grid.Column="2">
+                                        <DockPanel Style="{StaticResource SliderLabel}">
+                                            <TextBlock x:Name="segRightValue" DockPanel.Dock="Right" Foreground="{DynamicResource FlyoutTextSecondary}" />
+                                            <TextBlock Text="Right" Foreground="{DynamicResource FlyoutTextSecondary}" />
+                                        </DockPanel>
+                                        <Slider x:Name="segRightSlider" Minimum="0" Maximum="20" ValueChanged="SegmentShape_ValueChanged" />
+                                    </StackPanel>
+                                </Grid>
+
+                                <StackPanel x:Name="segWidthPanel">
+                                    <DockPanel Style="{StaticResource SliderLabel}">
+                                        <TextBlock x:Name="segWidthValue" DockPanel.Dock="Right" Foreground="{DynamicResource FlyoutTextSecondary}" />
+                                        <TextBlock Text="Segment width" />
+                                    </DockPanel>
+                                    <Slider x:Name="segWidthSlider" Minimum="40" Maximum="400" LargeChange="10" ValueChanged="SegmentShape_ValueChanged" />
+                                </StackPanel>
+
+                                <TextBlock Text="Changing the main Shape controls resets these." Foreground="{DynamicResource FlyoutTextSecondary}"
+                                           FontSize="12" Margin="0,10,0,0" TextWrapping="Wrap" />
+                            </StackPanel>
+                        </Border>
+
+                        <TextBlock Style="{StaticResource SectionHeader}" Text="More options" />
+                        <Border Style="{StaticResource Card}">
+                            <StackPanel>
+                                <CheckBox x:Name="hoverToggle" Style="{StaticResource ToggleSwitch}" Content="Show tray and widgets only on hover" Click="Toggle_Click"
+                                          ToolTip="Dynamic mode only. Polls the mouse, so costs a little CPU." />
+                                <CheckBox x:Name="compositionToggle" Style="{StaticResource ToggleSwitch}" Content="TranslucentTB compatibility" Click="Toggle_Click"
+                                          ToolTip="Works around a Windows bug when used with TranslucentTB and similar mods. May cause brief flicker." />
+                                <CheckBox x:Name="autoHideToggle" Style="{StaticResource ToggleSwitch}" Content="Auto-hide the taskbar" Click="Toggle_Click" />
+                            </StackPanel>
+                        </Border>
+                    </StackPanel>
+                </StackPanel>
+            </ScrollViewer>
+
+            <!-- Footer -->
+            <Border Grid.Row="1" Background="{DynamicResource FlyoutFooter}" BorderBrush="{DynamicResource FlyoutCardStroke}" BorderThickness="0,1,0,0" Padding="10,6">
+                <DockPanel>
+                    <Button DockPanel.Dock="Right" Style="{StaticResource FooterButton}" Click="Quit_Click" ToolTip="Restore the taskbar and close RoundedTB">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="&#xE7E8;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" VerticalAlignment="Center" Margin="0,0,8,0" />
+                            <TextBlock Text="Quit" VerticalAlignment="Center" />
+                        </StackPanel>
+                    </Button>
+                    <Button Style="{StaticResource FooterButton}" HorizontalAlignment="Left" Click="Help_Click">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="&#xE946;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" VerticalAlignment="Center" Margin="0,0,8,0" />
+                            <TextBlock Text="Help &amp; about" VerticalAlignment="Center" />
+                        </StackPanel>
+                    </Button>
+                </DockPanel>
+            </Border>
+        </Grid>
+    </Border>
+</Window>

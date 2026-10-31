@@ -395,15 +395,8 @@ namespace RoundedTB
                             Debug.WriteLine(vkey);
                             if (vkey == 0x71)
                             {
-                                if (mw.showTrayCheckBox.IsChecked == true)
-                                {
-                                    mw.showTrayCheckBox.IsChecked = false;
-                                }
-                                else
-                                {
-                                    mw.showTrayCheckBox.IsChecked = true;
-                                }
-                                mw.ApplyButton_Click(null, null);
+                                mw.activeSettings.ShowTray = !mw.activeSettings.ShowTray;
+                                mw.SettingsChangedExternally();
                             }
                             handled = true;
                             break;
