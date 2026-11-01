@@ -131,16 +131,26 @@ The v3.2.0 release zips are 72 MB (arm64) and 77 MB (x64); the GitHub runner com
 The metapackage, which the CommunityToolkit also depends on, pulls in onnxruntime, DirectML and
 Search, about 60 MB, so their assets are excluded in the csproj. Trimming works for WinUI and is
 unavailable for WPF. The trimmed ARM64 build was run and used for all the WinUI measurements above.
-The trimmed x64 build started and ran under emulation, but I couldn't open its flyout there because
-the tray overflow stopped responding to automation, so that's unverified. A migrated app would add
-the taskbar engine and UIAutomation interop on top of these sizes.
+The trimmed x64 build also opens and renders correctly under emulation on this machine. A migrated
+app would add the taskbar engine and UIAutomation interop on top of these sizes.
+
+## Window frame
+
+The 1px white frame in the first version of the spike wasn't a DWM border. The `OverlappedPresenter`
+puts `WS_DLGFRAME` back every time the window is shown, which leaves a 3px non-client frame (window
+630 px wide, client 624 px) that gets painted white. Removing the style once isn't enough. The fix is
+a window subclass that answers `WM_NCCALCSIZE` with "no non-client area", so the client area always
+fills the window.
+
+Keeping the style has a side benefit: DWM still treats the window as framed, so it draws its normal
+shadow. That shadow is faint, darkening the background 5–7 levels for ~10 px beyond the edge.
+
+Also checked:
+- Light theme, using the `RTB_THEME=light|dark` override.
+- Expanding Advanced: the window grows to the available height and the content scrolls.
 
 ## Known issues in the spike
 
-- A 1px white DWM frame shows around the window. Clearing `DWMWA_BORDER_COLOR`, setting dark mode,
-  and changing the NC rendering policy didn't remove it. It probably comes from extending the frame
-  into the client area. This needs a fix before shipping.
-- No shadow under the flyout. The WPF one has the DWM shadow.
 - Single-instance handling is just a mutex. There's no Win+F2 hotkey, About page, or startup toggle.
 - The first open in lazy mode takes ~0.6 s.
 
@@ -161,7 +171,7 @@ the taskbar engine and UIAutomation interop on top of these sizes.
 - **Suggested order:**
   1. Land the event-driven worker (`refactor/phase2-event-driven`), which is where the idle CPU goes.
   2. Port the app shell: tray, hotkey, single instance, startup.
-  3. Move the flyout over from this spike, fixing the white frame and adding a shadow.
+  3. Move the flyout over from this spike.
   4. Ship trimmed builds.
 - **Risks:**
   - Trimming warnings from CsWinRT and the Windows SDK projection need a test pass.

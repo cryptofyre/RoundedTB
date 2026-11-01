@@ -51,6 +51,7 @@ namespace RoundedTB.WinUI
         private Vector3 hiddenTranslation;
         private Stopwatch? openClock;
         private IntPtr targetMonitor;
+        private readonly Native.SubclassProc noFrameProc; // kept alive for the native side
 
         public FlyoutWindow()
         {
@@ -67,10 +68,10 @@ namespace RoundedTB.WinUI
             presenter.IsAlwaysOnTop = true;
             AppWindow.SetPresenter(presenter);
             AppWindow.IsShownInSwitchers = false;
-            // SetBorderAndTitleBar(false, false) still leaves a 1px frame on this build; make it a plain popup.
-            long style = Native.GetWindowLongPtr(hwnd, Native.GWL_STYLE);
-            style &= ~(Native.WS_CAPTION | Native.WS_THICKFRAME | Native.WS_SYSMENU | Native.WS_BORDER | Native.WS_DLGFRAME);
-            Native.SetWindowLongPtr(hwnd, Native.GWL_STYLE, style | Native.WS_POPUP);
+            // The presenter puts WS_DLGFRAME back whenever the window is shown, which gives it a 3px
+            // non-client frame that DWM paints white. Claim the whole window as client area instead.
+            noFrameProc = NoFrameSubclassProc;
+            Native.SetWindowSubclass(hwnd, noFrameProc, 1, IntPtr.Zero);
             long ex = Native.GetWindowLongPtr(hwnd, Native.GWL_EXSTYLE);
             Native.SetWindowLongPtr(hwnd, Native.GWL_EXSTYLE, (ex | Native.WS_EX_TOOLWINDOW) & ~Native.WS_EX_APPWINDOW);
             // Without the frame extended into the client area, the clear parts of a XAML window are black.
@@ -136,10 +137,22 @@ namespace RoundedTB.WinUI
 
         public bool IsOpen => isOpen;
 
+        private static IntPtr NoFrameSubclassProc(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam, nuint id, IntPtr refData)
+        {
+            if (msg == Native.WM_NCCALCSIZE && wParam != IntPtr.Zero)
+            {
+                return IntPtr.Zero; // client rect = window rect
+            }
+            return Native.DefSubclassProc(hWnd, msg, wParam, lParam);
+        }
+
         #region Theme and backdrop
 
+        // RTB_THEME=light|dark overrides the shell theme, for checking both without changing it.
         private static bool SystemUsesLightTheme() =>
-            Registry.GetValue(@"HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize", "SystemUsesLightTheme", 0) is int v && v == 1;
+            Environment.GetEnvironmentVariable("RTB_THEME") is "light" or "dark"
+                ? Environment.GetEnvironmentVariable("RTB_THEME") == "light"
+                : Registry.GetValue(@"HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize", "SystemUsesLightTheme", 0) is int v && v == 1;
 
         private void ApplyDwmAttributes()
         {

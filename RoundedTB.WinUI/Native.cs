@@ -56,13 +56,21 @@ namespace RoundedTB.WinUI
         public const uint TPM_RETURNCMD = 0x100, TPM_RIGHTBUTTON = 0x2, TPM_BOTTOMALIGN = 0x20;
         public const uint MONITOR_DEFAULTTONEAREST = 2;
         public const int GWL_EXSTYLE = -20;
-        public const int GWL_STYLE = -16;
-        public const long WS_POPUP = 0x80000000, WS_CAPTION = 0xC00000, WS_THICKFRAME = 0x40000, WS_SYSMENU = 0x80000, WS_BORDER = 0x800000, WS_DLGFRAME = 0x400000;
         public const long WS_EX_TOOLWINDOW = 0x80, WS_EX_APPWINDOW = 0x40000;
         public const int DWMWA_WINDOW_CORNER_PREFERENCE = 33, DWMWCP_DONOTROUND = 1, DWMWCP_ROUND = 2;
         public const int DWMWA_CLOAK = 13;
         public const int DWMWA_BORDER_COLOR = 34;
         public const int DWMWA_COLOR_NONE = unchecked((int)0xFFFFFFFE);
+
+        public const uint WM_NCCALCSIZE = 0x0083;
+
+        public delegate IntPtr SubclassProc(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam, nuint id, IntPtr refData);
+
+        [DllImport("comctl32.dll")]
+        public static extern bool SetWindowSubclass(IntPtr hWnd, SubclassProc proc, nuint id, IntPtr refData);
+
+        [DllImport("comctl32.dll")]
+        public static extern IntPtr DefSubclassProc(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam);
 
         [StructLayout(LayoutKind.Sequential)]
         public struct MARGINS { public int Left, Right, Top, Bottom; }
