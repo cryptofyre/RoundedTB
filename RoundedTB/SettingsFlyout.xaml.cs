@@ -285,6 +285,7 @@ namespace RoundedTB
                 int backdrop = Flyout.DWMSBT_TRANSIENTWINDOW;
                 Flyout.DwmSetWindowAttribute(hwnd, Flyout.DWMWA_SYSTEMBACKDROP_TYPE, ref backdrop, sizeof(int));
             }
+            ApplyDwmTheme();
         }
 
         // DWMWA_SYSTEMBACKDROP_TYPE arrived in 22621 (22H2). Older builds get a solid background.
@@ -352,9 +353,21 @@ namespace RoundedTB
 
             RootBorder.Background = SupportsSystemBackdrop ? Brushes.Transparent : (Brush)Resources["FlyoutFallback"];
 
+            isLightTheme = light;
+            ApplyDwmTheme();
+        }
+
+        private bool isLightTheme;
+
+        /// <summary>
+        /// Tells DWM which variant of the backdrop to draw. Needs the HWND, so it runs again from
+        /// OnSourceInitialized for the first open, when the theme is read before the handle exists.
+        /// </summary>
+        private void ApplyDwmTheme()
+        {
             if (hwnd != IntPtr.Zero)
             {
-                int dark = light ? 0 : 1;
+                int dark = isLightTheme ? 0 : 1;
                 Flyout.DwmSetWindowAttribute(hwnd, Flyout.DWMWA_USE_IMMERSIVE_DARK_MODE, ref dark, sizeof(int));
             }
         }
@@ -625,8 +638,12 @@ namespace RoundedTB
             ScheduleApply();
         }
 
-        private void LinkMargins_Click(object sender, RoutedEventArgs e)
+        private void LinkMargins_Changed(object sender, RoutedEventArgs e)
         {
+            if (loading || !IsInitialized)
+            {
+                return;
+            }
             loading = true;
             try
             {
@@ -687,9 +704,16 @@ namespace RoundedTB
             ScheduleApply();
         }
 
-        private void Toggle_Click(object sender, RoutedEventArgs e)
+        private void Toggle_Changed(object sender, RoutedEventArgs e)
         {
+            if (loading || !IsInitialized)
+            {
+                return;
+            }
             Types.Settings s = Settings;
+
+            // The couplings below flip other toggles; keep those from re-entering this handler.
+            loading = true;
 
             if (sender == hoverToggle)
             {
@@ -702,6 +726,8 @@ namespace RoundedTB
             {
                 fillTaskSwitchToggle.IsChecked = false;
             }
+
+            loading = false;
 
             s.ShowTray = showTrayToggle.IsChecked == true;
             s.ShowWidgets = showWidgetsToggle.IsChecked == true;
@@ -717,15 +743,25 @@ namespace RoundedTB
             ScheduleApply();
         }
 
-        private async void Startup_Click(object sender, RoutedEventArgs e)
+        private async void Startup_Changed(object sender, RoutedEventArgs e)
         {
+            if (loading)
+            {
+                return;
+            }
             await mw.SetRunAtStartup(startupToggle.IsChecked == true);
+            loading = true;
             startupToggle.IsChecked = mw.StartupCheckBox.IsChecked == true;
             startupToggle.IsEnabled = mw.StartupCheckBox.IsEnabled;
+            loading = false;
         }
 
-        private void Advanced_Click(object sender, RoutedEventArgs e)
+        private void Advanced_Changed(object sender, RoutedEventArgs e)
         {
+            if (!IsInitialized)
+            {
+                return;
+            }
             advancedPanel.Visibility = advancedToggle.IsChecked == true ? Visibility.Visible : Visibility.Collapsed;
             if (advancedToggle.IsChecked == true)
             {

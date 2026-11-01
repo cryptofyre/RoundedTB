@@ -293,7 +293,7 @@
 
                             <DockPanel Style="{StaticResource SliderLabel}" Margin="0,10,0,0">
                                 <CheckBox x:Name="linkMarginsToggle" DockPanel.Dock="Right" Style="{StaticResource ToggleSwitch}" Margin="0"
-                                          Content="Link all sides" Foreground="{DynamicResource FlyoutTextSecondary}" Click="LinkMargins_Click" />
+                                          Content="Link all sides" Foreground="{DynamicResource FlyoutTextSecondary}" Checked="LinkMargins_Changed" Unchecked="LinkMargins_Changed" />
                                 <TextBlock Text="Margins" VerticalAlignment="Center" />
                             </DockPanel>
 
@@ -352,9 +352,9 @@
                         <TextBlock Style="{StaticResource SectionHeader}" Text="Segments" />
                         <Border Style="{StaticResource Card}">
                             <StackPanel>
-                                <CheckBox x:Name="showTrayToggle" Style="{StaticResource ToggleSwitch}" Content="Show system tray" Click="Toggle_Click" />
-                                <CheckBox x:Name="showWidgetsToggle" Style="{StaticResource ToggleSwitch}" Content="Show widgets" Click="Toggle_Click" />
-                                <CheckBox x:Name="showClockToggle" Style="{StaticResource ToggleSwitch}" Content="Show clock on other monitors" Click="Toggle_Click" />
+                                <CheckBox x:Name="showTrayToggle" Style="{StaticResource ToggleSwitch}" Content="Show system tray" Checked="Toggle_Changed" Unchecked="Toggle_Changed" />
+                                <CheckBox x:Name="showWidgetsToggle" Style="{StaticResource ToggleSwitch}" Content="Show widgets" Checked="Toggle_Changed" Unchecked="Toggle_Changed" />
+                                <CheckBox x:Name="showClockToggle" Style="{StaticResource ToggleSwitch}" Content="Show clock on other monitors" Checked="Toggle_Changed" Unchecked="Toggle_Changed" />
                             </StackPanel>
                         </Border>
                     </StackPanel>
@@ -363,14 +363,14 @@
                     <TextBlock Style="{StaticResource SectionHeader}" Text="Behaviour" />
                     <Border Style="{StaticResource Card}">
                         <StackPanel>
-                            <CheckBox x:Name="fillMaximisedToggle" Style="{StaticResource ToggleSwitch}" Content="Fill when a window is maximised" Click="Toggle_Click" />
-                            <CheckBox x:Name="fillTaskSwitchToggle" Style="{StaticResource ToggleSwitch}" Content="Also fill during Alt+Tab" Click="Toggle_Click" Margin="16,6,0,6" />
-                            <CheckBox x:Name="startupToggle" Style="{StaticResource ToggleSwitch}" Content="Run at startup" Click="Startup_Click" />
+                            <CheckBox x:Name="fillMaximisedToggle" Style="{StaticResource ToggleSwitch}" Content="Fill when a window is maximised" Checked="Toggle_Changed" Unchecked="Toggle_Changed" />
+                            <CheckBox x:Name="fillTaskSwitchToggle" Style="{StaticResource ToggleSwitch}" Content="Also fill during Alt+Tab" Checked="Toggle_Changed" Unchecked="Toggle_Changed" Margin="16,6,0,6" />
+                            <CheckBox x:Name="startupToggle" Style="{StaticResource ToggleSwitch}" Content="Run at startup" Checked="Startup_Changed" Unchecked="Startup_Changed" />
                         </StackPanel>
                     </Border>
 
                     <!-- Advanced -->
-                    <ToggleButton x:Name="advancedToggle" Style="{StaticResource ExpanderHeader}" Margin="0,16,0,0" Content="Advanced" Click="Advanced_Click" />
+                    <ToggleButton x:Name="advancedToggle" Style="{StaticResource ExpanderHeader}" Margin="0,16,0,0" Content="Advanced" Checked="Advanced_Changed" Unchecked="Advanced_Changed" />
                     <StackPanel x:Name="advancedPanel" Visibility="Collapsed">
                         <TextBlock x:Name="segmentLayoutHeader" Style="{StaticResource SectionHeader}" Text="Per-segment layout (dynamic mode)" />
                         <Border x:Name="segmentLayoutCard" Style="{StaticResource Card}" Padding="14,10,14,12">
@@ -446,11 +446,11 @@
                         <TextBlock Style="{StaticResource SectionHeader}" Text="More options" />
                         <Border Style="{StaticResource Card}">
                             <StackPanel>
-                                <CheckBox x:Name="hoverToggle" Style="{StaticResource ToggleSwitch}" Content="Show tray and widgets only on hover" Click="Toggle_Click"
+                                <CheckBox x:Name="hoverToggle" Style="{StaticResource ToggleSwitch}" Content="Show tray and widgets only on hover" Checked="Toggle_Changed" Unchecked="Toggle_Changed"
                                           ToolTip="Dynamic mode only. Polls the mouse, so costs a little CPU." />
-                                <CheckBox x:Name="compositionToggle" Style="{StaticResource ToggleSwitch}" Content="TranslucentTB compatibility" Click="Toggle_Click"
+                                <CheckBox x:Name="compositionToggle" Style="{StaticResource ToggleSwitch}" Content="TranslucentTB compatibility" Checked="Toggle_Changed" Unchecked="Toggle_Changed"
                                           ToolTip="Works around a Windows bug when used with TranslucentTB and similar mods. May cause brief flicker." />
-                                <CheckBox x:Name="autoHideToggle" Style="{StaticResource ToggleSwitch}" Content="Auto-hide the taskbar" Click="Toggle_Click" />
+                                <CheckBox x:Name="autoHideToggle" Style="{StaticResource ToggleSwitch}" Content="Auto-hide the taskbar" Checked="Toggle_Changed" Unchecked="Toggle_Changed" />
                             </StackPanel>
                         </Border>
                     </StackPanel>
