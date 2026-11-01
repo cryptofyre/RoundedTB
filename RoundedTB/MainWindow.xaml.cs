@@ -146,6 +146,7 @@ namespace RoundedTB
             if (System.IO.File.Exists(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Startup), "RoundedTB.lnk")) && !IsRunningAsUWP())
             {
                 StartupCheckBox.IsChecked = true;
+                RepairStartupShortcut();
             }
             taskbarThread.WorkerSupportsCancellation = true;
             taskbarThread.WorkerReportsProgress = true;
@@ -298,10 +299,8 @@ namespace RoundedTB
             if (activeSettings.IsNotFirstLaunch != true)
             {
                 activeSettings.IsNotFirstLaunch = true;
-                AboutWindow aw = new AboutWindow();
-                aw.expander0.IsExpanded = true;
-                aw.ShowDialog();
-                Dispatcher.BeginInvoke(DispatcherPriority.ApplicationIdle, new Action(ShowSettings));
+                // First run: open the flyout on its Help tab so people find out where settings live.
+                Dispatcher.BeginInvoke(DispatcherPriority.ApplicationIdle, new Action(() => ShowSettings(helpPage: true)));
             }
 
             AutoHide(true, taskbarDetails);
@@ -312,12 +311,17 @@ namespace RoundedTB
         /// </summary>
         public void ShowSettings()
         {
+            ShowSettings(helpPage: false);
+        }
+
+        public void ShowSettings(bool helpPage)
+        {
             if (shouldReallyDieNoReally || taskbarsRestored)
             {
                 return;
             }
             flyout ??= new SettingsFlyout(this);
-            flyout.ShowFlyout();
+            flyout.ShowFlyout(helpPage ? SettingsFlyout.Page.Help : SettingsFlyout.Page.Settings);
         }
 
         private void MainTitleBar_NotifyIconClick(object sender, RoutedEventArgs e)
@@ -753,7 +757,9 @@ namespace RoundedTB
                     Directory.CreateDirectory(shortcutFolder);
                 }
                 string rtbStartupLink = Path.Combine(shortcutFolder, "RoundedTB.lnk");
-                string rtbExecutable = Environment.GetCommandLineArgs()[0];
+                // Not GetCommandLineArgs()[0]: on .NET Core that is RoundedTB.dll, which the shortcut
+                // can't launch. ProcessPath is the apphost, RoundedTB.exe.
+                string rtbExecutable = Environment.ProcessPath;
                 ShellLink.CreateShortcut(
                     linkPath: rtbStartupLink,
                     targetPath: rtbExecutable,
@@ -764,6 +770,46 @@ namespace RoundedTB
             catch (Exception)
             {
             }
+        }
+
+        /// <summary>
+        /// Earlier .NET 10 builds wrote the startup shortcut (or its icon) against RoundedTB.dll.
+        /// Point it at the RoundedTB.exe beside that DLL instead, keeping it on whichever build the
+        /// user set up rather than moving it to the one that happens to be running.
+        /// </summary>
+        private void RepairStartupShortcut()
+        {
+            string startupLink = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Startup), "RoundedTB.lnk");
+            if (!System.IO.File.Exists(startupLink) || !ShellLink.TryReadShortcut(startupLink, out string target, out string icon))
+            {
+                return;
+            }
+
+            string fixedTarget = DllToExe(target);
+            string fixedIcon = DllToExe(icon);
+            if (fixedTarget == target && fixedIcon == icon)
+            {
+                return;
+            }
+            try
+            {
+                ShellLink.CreateShortcut(startupLink, fixedTarget, string.IsNullOrEmpty(fixedIcon) ? fixedTarget : fixedIcon, "", "Start RoundedTB");
+                interaction.AddLog($"Repaired startup shortcut to point at {fixedTarget}");
+            }
+            catch (Exception ex)
+            {
+                interaction.AddLog($"Failed to repair startup shortcut: {ex.Message}");
+            }
+        }
+
+        private static string DllToExe(string path)
+        {
+            if (string.IsNullOrEmpty(path) || !path.EndsWith(".dll", StringComparison.OrdinalIgnoreCase))
+            {
+                return path;
+            }
+            string exe = Path.ChangeExtension(path, ".exe");
+            return System.IO.File.Exists(exe) ? exe : path;
         }
 
         async Task StartupToggle()

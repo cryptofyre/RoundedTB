@@ -37,9 +37,6 @@
     <Resource Include="RoundedTBDev.ico" />
     <Resource Include="res\TrayDark.ico" />
     <Resource Include="res\TrayLight.ico" />
-    <Resource Include="res\HeadBanner.png" />
-    <Resource Include="res\HeadBannerCan.png" />
-    <Resource Include="res\HeadBannerDev.png" />
   </ItemGroup>
 
 </Project>

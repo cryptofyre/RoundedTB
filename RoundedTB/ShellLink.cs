@@ -32,6 +32,35 @@ namespace RoundedTB
             }
         }
 
+        /// <summary>
+        /// Reads a shortcut's target and icon paths. Returns false if it can't be loaded.
+        /// </summary>
+        public static bool TryReadShortcut(string linkPath, out string targetPath, out string iconPath)
+        {
+            targetPath = null;
+            iconPath = null;
+            IShellLinkW link = (IShellLinkW)new ShellLinkCoClass();
+            try
+            {
+                ((IPersistFile)link).Load(linkPath, 0);
+                var target = new System.Text.StringBuilder(1024);
+                link.GetPath(target, target.Capacity, IntPtr.Zero, 0);
+                var icon = new System.Text.StringBuilder(1024);
+                link.GetIconLocation(icon, icon.Capacity, out _);
+                targetPath = target.ToString();
+                iconPath = icon.ToString();
+                return true;
+            }
+            catch (Exception)
+            {
+                return false;
+            }
+            finally
+            {
+                Marshal.FinalReleaseComObject(link);
+            }
+        }
+
         [ComImport]
         [Guid("00021401-0000-0000-C000-000000000046")]
         [ClassInterface(ClassInterfaceType.None)]

@@ -31,9 +31,12 @@
         <SolidColorBrush x:Key="FlyoutControlStroke" Color="#9AFFFFFF" />
         <SolidColorBrush x:Key="FlyoutTrack" Color="#8BFFFFFF" />
         <SolidColorBrush x:Key="FlyoutAccent" Color="#60CDFF" />
+        <SolidColorBrush x:Key="FlyoutAccentDeep" Color="#0078D4" />
         <SolidColorBrush x:Key="FlyoutOnAccent" Color="#000000" />
         <SolidColorBrush x:Key="FlyoutThumb" Color="#454545" />
         <SolidColorBrush x:Key="FlyoutFallback" Color="#202020" />
+        <SolidColorBrush x:Key="FlyoutTint" Color="#D91C1C1C" />
+        <SolidColorBrush x:Key="FlyoutTintSliding" Color="#F71C1C1C" />
         <SolidColorBrush x:Key="FlyoutFooter" Color="#0A000000" />
 
         <Style TargetType="TextBlock">
@@ -252,13 +255,134 @@
             </Setter>
         </Style>
 
+        <!-- Icon + label section header. -->
+        <Style x:Key="SectionHeaderPanel" TargetType="StackPanel">
+            <Setter Property="Orientation" Value="Horizontal" />
+            <Setter Property="Margin" Value="4,14,0,6" />
+        </Style>
+        <Style x:Key="SectionIcon" TargetType="TextBlock" BasedOn="{StaticResource {x:Type TextBlock}}">
+            <Setter Property="FontFamily" Value="Segoe Fluent Icons, Segoe MDL2 Assets" />
+            <Setter Property="FontSize" Value="13" />
+            <Setter Property="Foreground" Value="{DynamicResource FlyoutAccent}" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+            <Setter Property="Margin" Value="0,0,8,0" />
+        </Style>
+        <Style x:Key="ButtonIcon" TargetType="TextBlock" BasedOn="{StaticResource {x:Type TextBlock}}">
+            <Setter Property="FontFamily" Value="Segoe Fluent Icons, Segoe MDL2 Assets" />
+            <Setter Property="FontSize" Value="13" />
+            <Setter Property="Foreground" Value="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Control}}" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+            <Setter Property="Margin" Value="0,0,7,0" />
+        </Style>
+        <!-- Text inside a button's content: follows the button's foreground (e.g. on-accent when selected)
+             instead of the window-wide TextBlock colour. -->
+        <Style x:Key="ButtonLabel" TargetType="TextBlock" BasedOn="{StaticResource {x:Type TextBlock}}">
+            <Setter Property="Foreground" Value="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Control}}" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+        </Style>
+
+        <!-- The RoundedTB mark (a rounded tile with an R, sitting on a taskbar) drawn in the system
+             accent colours so it matches whatever accent the user has picked. -->
+        <ControlTemplate x:Key="Logo" TargetType="ContentControl">
+            <Viewbox Stretch="Uniform">
+                <Canvas Width="32" Height="32">
+                    <Rectangle Canvas.Left="6.5" Canvas.Top="3.5" Width="19" Height="19" RadiusX="3.5" RadiusY="3.5" Fill="{DynamicResource FlyoutAccent}" />
+                    <TextBlock Canvas.Left="6.5" Canvas.Top="2.6" Width="19" TextAlignment="Center" Text="R" FontSize="12.5" FontWeight="Bold"
+                               FontFamily="Segoe UI Variable Display, Segoe UI" Foreground="{DynamicResource FlyoutOnAccent}" />
+                    <Rectangle Canvas.Left="1.5" Canvas.Top="17" Width="29" Height="11" RadiusX="3" RadiusY="3" Fill="{DynamicResource FlyoutAccentDeep}" />
+                </Canvas>
+            </Viewbox>
+        </ControlTemplate>
+
+        <!-- About page tab: text with a short accent bar under the selected one. -->
+        <Style x:Key="Tab" TargetType="RadioButton">
+            <Setter Property="Foreground" Value="{DynamicResource FlyoutTextSecondary}" />
+            <Setter Property="FontSize" Value="14" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+            <Setter Property="Margin" Value="0,0,20,0" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="RadioButton">
+                        <StackPanel Background="Transparent">
+                            <ContentPresenter Margin="0,4,0,6" HorizontalAlignment="Center" TextElement.Foreground="{TemplateBinding Foreground}" />
+                            <Border x:Name="Bar" Width="16" Height="3" CornerRadius="1.5" Background="{DynamicResource FlyoutAccent}" Visibility="Hidden" />
+                        </StackPanel>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter Property="Foreground" Value="{DynamicResource FlyoutText}" />
+                            </Trigger>
+                            <Trigger Property="IsChecked" Value="True">
+                                <Setter Property="Foreground" Value="{DynamicResource FlyoutText}" />
+                                <Setter TargetName="Bar" Property="Visibility" Value="Visible" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="InfoLabel" TargetType="TextBlock" BasedOn="{StaticResource {x:Type TextBlock}}">
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="Margin" Value="0,5" />
+        </Style>
+        <Style x:Key="InfoValue" TargetType="TextBlock" BasedOn="{StaticResource {x:Type TextBlock}}">
+            <Setter Property="Foreground" Value="{DynamicResource FlyoutTextSecondary}" />
+            <Setter Property="Margin" Value="0,5" />
+        </Style>
+        <Style x:Key="Body" TargetType="TextBlock" BasedOn="{StaticResource {x:Type TextBlock}}">
+            <Setter Property="TextWrapping" Value="Wrap" />
+            <Setter Property="TextTrimming" Value="None" />
+            <Setter Property="LineHeight" Value="20" />
+        </Style>
+        <Style TargetType="Hyperlink">
+            <Setter Property="Foreground" Value="{DynamicResource FlyoutAccent}" />
+            <Setter Property="TextDecorations" Value="None" />
+            <Style.Triggers>
+                <Trigger Property="IsMouseOver" Value="True">
+                    <Setter Property="TextDecorations" Value="Underline" />
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+
+        <!-- A full-width row in a card that opens something: icon, label, chevron. -->
+        <Style x:Key="LinkRow" TargetType="Button">
+            <Setter Property="Foreground" Value="{DynamicResource FlyoutText}" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Bg" Background="Transparent" CornerRadius="4" Padding="8,9" Margin="-8,0">
+                            <DockPanel>
+                                <TextBlock DockPanel.Dock="Right" Text="&#xE8A7;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="12"
+                                           Foreground="{DynamicResource FlyoutTextSecondary}" VerticalAlignment="Center" />
+                                <TextBlock DockPanel.Dock="Left" Text="{TemplateBinding Tag}" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="16"
+                                           VerticalAlignment="Center" Margin="0,0,12,0" />
+                                <ContentPresenter VerticalAlignment="Center" TextElement.Foreground="{TemplateBinding Foreground}" />
+                            </DockPanel>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Bg" Property="Background" Value="{DynamicResource FlyoutControlHover}" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
         <!-- Label + current value above a slider. -->
         <Style x:Key="SliderLabel" TargetType="DockPanel">
             <Setter Property="Margin" Value="0,8,0,0" />
         </Style>
     </Window.Resources>
 
-    <Border x:Name="RootBorder" Background="Transparent">
+    <Border x:Name="RootBorder" Background="Transparent" CornerRadius="8" SizeChanged="RootBorder_SizeChanged">
+        <Border.RenderTransform>
+            <TranslateTransform x:Name="contentSlide" />
+        </Border.RenderTransform>
         <Grid>
             <Grid.RowDefinitions>
                 <RowDefinition Height="*" />
@@ -270,20 +394,24 @@
 
                     <!-- Header -->
                     <DockPanel>
-                        <TextBlock Text="RoundedTB" FontSize="20" FontWeight="SemiBold" FontFamily="Segoe UI Variable Display, Segoe UI" VerticalAlignment="Center" />
+                        <ContentControl Template="{StaticResource Logo}" Width="34" Height="34" VerticalAlignment="Center" HorizontalAlignment="Left" ToolTip="RoundedTB" Focusable="False" />
                         <Border Style="{StaticResource SegmentHost}" HorizontalAlignment="Right" VerticalAlignment="Center">
                             <StackPanel Orientation="Horizontal">
-                                <RadioButton x:Name="basicModeRadio" GroupName="Mode" Style="{StaticResource Segment}" Content="Basic" Checked="Mode_Checked"
-                                             ToolTip="Round the whole taskbar as one shape" />
-                                <RadioButton x:Name="dynamicModeRadio" GroupName="Mode" Style="{StaticResource Segment}" Content="Dynamic" Checked="Mode_Checked"
-                                             ToolTip="Shrink the taskbar around its icons and split it into segments" />
+                                <RadioButton x:Name="basicModeRadio" GroupName="Mode" Style="{StaticResource Segment}" Checked="Mode_Checked"
+                                             ToolTip="Round the whole taskbar as one shape" >
+                                    <StackPanel Orientation="Horizontal"><TextBlock Style="{StaticResource ButtonIcon}" Text="&#xE75B;" /><TextBlock Style="{StaticResource ButtonLabel}" Text="Basic" /></StackPanel>
+                                </RadioButton>
+                                <RadioButton x:Name="dynamicModeRadio" GroupName="Mode" Style="{StaticResource Segment}" Checked="Mode_Checked"
+                                             ToolTip="Shrink the taskbar around its icons and split it into segments" >
+                                    <StackPanel Orientation="Horizontal"><TextBlock Style="{StaticResource ButtonIcon}" Text="&#xF246;" /><TextBlock x:Name="dynamicModeLabel" Style="{StaticResource ButtonLabel}" Text="Dynamic" /></StackPanel>
+                                </RadioButton>
                             </StackPanel>
                         </Border>
                     </DockPanel>
 
                     <!-- Shape -->
-                    <TextBlock Style="{StaticResource SectionHeader}" Text="Shape" />
-                    <Border Style="{StaticResource Card}" Padding="14,4,14,12">
+                    <StackPanel Style="{StaticResource SectionHeaderPanel}"><TextBlock Style="{StaticResource SectionIcon}" Text="&#xEB3C;" /><TextBlock Style="{StaticResource SectionHeader}" Margin="0" Text="Shape" /></StackPanel>
+                    <Border Style="{StaticResource Card}" Padding="14,4,14,8">
                         <StackPanel>
                             <DockPanel Style="{StaticResource SliderLabel}">
                                 <TextBlock x:Name="radiusValue" DockPanel.Dock="Right" Foreground="{DynamicResource FlyoutTextSecondary}" />
@@ -291,21 +419,17 @@
                             </DockPanel>
                             <Slider x:Name="radiusSlider" Minimum="0" Maximum="32" ValueChanged="MainShape_ValueChanged" />
 
-                            <DockPanel Style="{StaticResource SliderLabel}" Margin="0,10,0,0">
-                                <CheckBox x:Name="linkMarginsToggle" DockPanel.Dock="Right" Style="{StaticResource ToggleSwitch}" Margin="0"
-                                          Content="Link all sides" Foreground="{DynamicResource FlyoutTextSecondary}" Checked="LinkMargins_Changed" Unchecked="LinkMargins_Changed" />
-                                <TextBlock Text="Margins" VerticalAlignment="Center" />
-                            </DockPanel>
-
                             <StackPanel x:Name="linkedMarginPanel">
-                                <DockPanel Style="{StaticResource SliderLabel}">
+                                <DockPanel Style="{StaticResource SliderLabel}" Margin="0,10,0,0">
                                     <TextBlock x:Name="marginAllValue" DockPanel.Dock="Right" Foreground="{DynamicResource FlyoutTextSecondary}" />
-                                    <TextBlock Text="All sides" Foreground="{DynamicResource FlyoutTextSecondary}" />
+                                    <TextBlock Text="Margins" />
                                 </DockPanel>
                                 <Slider x:Name="marginAllSlider" Minimum="0" Maximum="20" ValueChanged="MainShape_ValueChanged" />
                             </StackPanel>
 
-                            <Grid x:Name="splitMarginPanel" Visibility="Collapsed">
+                            <StackPanel x:Name="splitMarginPanel" Visibility="Collapsed">
+                            <TextBlock Text="Margins" Margin="0,10,0,0" />
+                            <Grid>
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="*" />
                                     <ColumnDefinition Width="16" />
@@ -344,12 +468,16 @@
                                     <Slider x:Name="marginRightSlider" Minimum="0" Maximum="20" ValueChanged="MainShape_ValueChanged" />
                                 </StackPanel>
                             </Grid>
+                            </StackPanel>
+
+                            <CheckBox x:Name="linkMarginsToggle" Style="{StaticResource ToggleSwitch}" Margin="0,12,0,0"
+                                      Content="Link all sides" Checked="LinkMargins_Changed" Unchecked="LinkMargins_Changed" />
                         </StackPanel>
                     </Border>
 
                     <!-- Segments (dynamic mode only) -->
                     <StackPanel x:Name="segmentsSection">
-                        <TextBlock Style="{StaticResource SectionHeader}" Text="Segments" />
+                        <StackPanel Style="{StaticResource SectionHeaderPanel}"><TextBlock Style="{StaticResource SectionIcon}" Text="&#xE8A9;" /><TextBlock Style="{StaticResource SectionHeader}" Margin="0" Text="Segments" /></StackPanel>
                         <Border Style="{StaticResource Card}">
                             <StackPanel>
                                 <CheckBox x:Name="showTrayToggle" Style="{StaticResource ToggleSwitch}" Content="Show system tray" Checked="Toggle_Changed" Unchecked="Toggle_Changed" />
@@ -360,7 +488,7 @@
                     </StackPanel>
 
                     <!-- Behaviour -->
-                    <TextBlock Style="{StaticResource SectionHeader}" Text="Behaviour" />
+                    <StackPanel Style="{StaticResource SectionHeaderPanel}"><TextBlock Style="{StaticResource SectionIcon}" Text="&#xE9E9;" /><TextBlock Style="{StaticResource SectionHeader}" Margin="0" Text="Behaviour" /></StackPanel>
                     <Border Style="{StaticResource Card}">
                         <StackPanel>
                             <CheckBox x:Name="fillMaximisedToggle" Style="{StaticResource ToggleSwitch}" Content="Fill when a window is maximised" Checked="Toggle_Changed" Unchecked="Toggle_Changed" />
@@ -370,7 +498,9 @@
                     </Border>
 
                     <!-- Advanced -->
-                    <ToggleButton x:Name="advancedToggle" Style="{StaticResource ExpanderHeader}" Margin="0,16,0,0" Content="Advanced" Checked="Advanced_Changed" Unchecked="Advanced_Changed" />
+                    <ToggleButton x:Name="advancedToggle" Style="{StaticResource ExpanderHeader}" Margin="0,16,0,0" Checked="Advanced_Changed" Unchecked="Advanced_Changed" >
+                        <StackPanel Orientation="Horizontal"><TextBlock Style="{StaticResource SectionIcon}" Text="&#xE9F5;" /><TextBlock Text="Advanced" VerticalAlignment="Center" /></StackPanel>
+                    </ToggleButton>
                     <StackPanel x:Name="advancedPanel" Visibility="Collapsed">
                         <TextBlock x:Name="segmentLayoutHeader" Style="{StaticResource SectionHeader}" Text="Per-segment layout (dynamic mode)" />
                         <Border x:Name="segmentLayoutCard" Style="{StaticResource Card}" Padding="14,10,14,12">
@@ -457,19 +587,116 @@
                 </StackPanel>
             </ScrollViewer>
 
+            <!-- About page: replaces the settings in the same flyout rather than opening a window. -->
+            <ScrollViewer x:Name="AboutScroller" Visibility="Collapsed" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Focusable="False">
+                <StackPanel Margin="16,18,16,16">
+                    <StackPanel Orientation="Horizontal" Margin="4,0,0,0">
+                        <ContentControl Template="{StaticResource Logo}" Width="48" Height="48" VerticalAlignment="Center" Focusable="False" />
+                        <TextBlock Text="RoundedTB" FontSize="30" FontWeight="SemiBold" FontFamily="Segoe UI Variable Display, Segoe UI"
+                                   VerticalAlignment="Center" Margin="12,0,0,2" />
+                    </StackPanel>
+
+                    <StackPanel Orientation="Horizontal" Margin="4,16,0,0">
+                        <RadioButton x:Name="aboutTab" GroupName="AboutTabs" Style="{StaticResource Tab}" Content="About" Checked="AboutTab_Checked" />
+                        <RadioButton x:Name="helpTab" GroupName="AboutTabs" Style="{StaticResource Tab}" Content="Help" Checked="AboutTab_Checked" />
+                        <RadioButton x:Name="linksTab" GroupName="AboutTabs" Style="{StaticResource Tab}" Content="Links" Checked="AboutTab_Checked" />
+                    </StackPanel>
+
+                    <!-- About -->
+                    <StackPanel x:Name="aboutTabPanel" Margin="0,12,0,0">
+                        <Border Style="{StaticResource Card}" Padding="14,8">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto" MinWidth="104" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                </Grid.RowDefinitions>
+                                <TextBlock Grid.Row="0" Style="{StaticResource InfoLabel}" Text="Version" />
+                                <TextBlock Grid.Row="0" Grid.Column="1" Style="{StaticResource InfoValue}" x:Name="infoVersion" />
+                                <TextBlock Grid.Row="1" Style="{StaticResource InfoLabel}" Text="Mode" />
+                                <TextBlock Grid.Row="1" Grid.Column="1" Style="{StaticResource InfoValue}" x:Name="infoMode" />
+                                <TextBlock Grid.Row="2" Style="{StaticResource InfoLabel}" Text="Taskbars" />
+                                <TextBlock Grid.Row="2" Grid.Column="1" Style="{StaticResource InfoValue}" x:Name="infoTaskbars" />
+                                <TextBlock Grid.Row="3" Style="{StaticResource InfoLabel}" Text="Windows" />
+                                <TextBlock Grid.Row="3" Grid.Column="1" Style="{StaticResource InfoValue}" x:Name="infoWindows" />
+                                <TextBlock Grid.Row="4" Style="{StaticResource InfoLabel}" Text="Architecture" />
+                                <TextBlock Grid.Row="4" Grid.Column="1" Style="{StaticResource InfoValue}" x:Name="infoArch" />
+                            </Grid>
+                        </Border>
+                        <TextBlock Style="{StaticResource Body}" Margin="4,14,4,0" Foreground="{DynamicResource FlyoutTextSecondary}">
+                            Adds margins, rounded corners and segments to the Windows taskbar. Originally created by Torch; this fork carries on with
+                            fixes for current Windows builds.
+                        </TextBlock>
+                        <TextBlock Style="{StaticResource Body}" Margin="4,10,4,0" Foreground="{DynamicResource FlyoutTextSecondary}">
+                            Free software under the
+                            <Hyperlink NavigateUri="https://github.com/cryptofyre/RoundedTB/blob/master/LICENSE" RequestNavigate="Hyperlink_RequestNavigate">GNU GPL v3.0</Hyperlink>.
+                        </TextBlock>
+                    </StackPanel>
+
+                    <!-- Help -->
+                    <StackPanel x:Name="helpTabPanel" Margin="0,12,0,0" Visibility="Collapsed">
+                        <Border Style="{StaticResource Card}" Padding="14,10">
+                            <StackPanel>
+                                <TextBlock Style="{StaticResource Body}"><Run FontWeight="SemiBold" Text="Basic" /> rounds the whole taskbar as one shape.
+                                    <Run FontWeight="SemiBold" Text="Dynamic" /> shrinks it around its icons and splits off the tray, widgets and clock.</TextBlock>
+                                <TextBlock Style="{StaticResource Body}" Margin="0,10,0,0"><Run FontWeight="SemiBold" Text="Margins" /> pull the taskbar in from the screen edges.
+                                    Turn off <Run FontWeight="SemiBold" Text="Link all sides" /> to set each side on its own.</TextBlock>
+                                <TextBlock Style="{StaticResource Body}" Margin="0,10,0,0"><Run FontWeight="SemiBold" Text="Advanced" /> gives each dynamic segment its own shape. Moving the main
+                                    Shape sliders afterwards resets them to match.</TextBlock>
+                                <TextBlock Style="{StaticResource Body}" Margin="0,10,0,0"><Run FontWeight="SemiBold" Text="Win + F2" /> shows or hides the system tray at any time.</TextBlock>
+                                <TextBlock Style="{StaticResource Body}" Margin="0,10,0,0">Changes apply as you make them; there is nothing to save.</TextBlock>
+                            </StackPanel>
+                        </Border>
+                        <TextBlock Style="{StaticResource SectionHeader}" Text="Known issues" />
+                        <Border Style="{StaticResource Card}" Padding="14,10">
+                            <StackPanel>
+                                <TextBlock Style="{StaticResource Body}">• Windows' own taskbar auto-hide isn't supported; use the Auto-hide option under Advanced instead.</TextBlock>
+                                <TextBlock Style="{StaticResource Body}" Margin="0,6,0,0">• Dynamic mode only works with the taskbar at the top or bottom of the screen.</TextBlock>
+                                <TextBlock Style="{StaticResource Body}" Margin="0,6,0,0">• Taskbar mods other than TranslucentTB aren't officially supported.</TextBlock>
+                            </StackPanel>
+                        </Border>
+                    </StackPanel>
+
+                    <!-- Links -->
+                    <StackPanel x:Name="linksTabPanel" Margin="0,12,0,0" Visibility="Collapsed">
+                        <Border Style="{StaticResource Card}" Padding="14,4">
+                            <StackPanel>
+                                <Button Style="{StaticResource LinkRow}" Tag="&#xE8A5;" Content="README and setup" Click="Link_Click" CommandParameter="https://github.com/cryptofyre/RoundedTB#readme" />
+                                <Button Style="{StaticResource LinkRow}" Tag="&#xEBE8;" Content="Report an issue" Click="Link_Click" CommandParameter="https://github.com/cryptofyre/RoundedTB/issues" />
+                                <Button Style="{StaticResource LinkRow}" Tag="&#xE896;" Content="Latest releases" Click="Link_Click" CommandParameter="https://github.com/cryptofyre/RoundedTB/releases" />
+                                <Button Style="{StaticResource LinkRow}" Tag="&#xE774;" Content="Original RoundedTB project" Click="Link_Click" CommandParameter="https://github.com/RoundedTB/RoundedTB" />
+                            </StackPanel>
+                        </Border>
+                        <TextBlock Style="{StaticResource SectionHeader}" Text="Troubleshooting" />
+                        <Border Style="{StaticResource Card}" Padding="14,4">
+                            <StackPanel>
+                                <Button Style="{StaticResource LinkRow}" Tag="&#xE8E5;" Content="Open settings file" Click="OpenConfig_Click" />
+                                <Button Style="{StaticResource LinkRow}" Tag="&#xE838;" Content="Open settings folder" Click="OpenSettingsFolder_Click" />
+                            </StackPanel>
+                        </Border>
+                    </StackPanel>
+                </StackPanel>
+            </ScrollViewer>
+
             <!-- Footer -->
             <Border Grid.Row="1" Background="{DynamicResource FlyoutFooter}" BorderBrush="{DynamicResource FlyoutCardStroke}" BorderThickness="0,1,0,0" Padding="10,6">
                 <DockPanel>
-                    <Button DockPanel.Dock="Right" Style="{StaticResource FooterButton}" Click="Quit_Click" ToolTip="Restore the taskbar and close RoundedTB">
+                    <Button x:Name="quitButton" DockPanel.Dock="Right" Style="{StaticResource FooterButton}" Click="Quit_Click" AutomationProperties.Name="Quit RoundedTB" ToolTip="Restore the taskbar and close RoundedTB">
                         <StackPanel Orientation="Horizontal">
                             <TextBlock Text="&#xE7E8;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" VerticalAlignment="Center" Margin="0,0,8,0" />
                             <TextBlock Text="Quit" VerticalAlignment="Center" />
                         </StackPanel>
                     </Button>
-                    <Button Style="{StaticResource FooterButton}" HorizontalAlignment="Left" Click="Help_Click">
+                    <Button x:Name="helpButton" Style="{StaticResource FooterButton}" HorizontalAlignment="Left" Click="Help_Click" AutomationProperties.Name="Help and about">
                         <StackPanel Orientation="Horizontal">
-                            <TextBlock Text="&#xE946;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" VerticalAlignment="Center" Margin="0,0,8,0" />
-                            <TextBlock Text="Help &amp; about" VerticalAlignment="Center" />
+                            <TextBlock x:Name="helpButtonIcon" Text="&#xE946;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" VerticalAlignment="Center" Margin="0,0,8,0" />
+                            <TextBlock x:Name="helpButtonText" Text="Help &amp; about" VerticalAlignment="Center" />
                         </StackPanel>
                     </Button>
                 </DockPanel>

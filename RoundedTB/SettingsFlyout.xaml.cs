@@ -35,6 +35,18 @@ namespace RoundedTB
         private LocalPInvoke.RECT targetTaskbarRect;
         private bool repositioning;
 
+        // Open/close animation: the content slides in from the taskbar edge the flyout sits against,
+        // masked by the window's own edge, like the shell's quick settings. See StartAnimation.
+        private enum RevealEdge { Bottom, Top, Left, Right }
+        private RevealEdge revealEdge = RevealEdge.Bottom;
+        private bool animating;
+        private bool closing;
+        private Stopwatch animationClock;
+        private TimeSpan animationDuration;
+        private Action animationCompleted;
+        private static readonly TimeSpan OpenDuration = TimeSpan.FromMilliseconds(250);
+        private static readonly TimeSpan CloseDuration = TimeSpan.FromMilliseconds(150);
+
         private const int DefaultRadiusMax = 32;
         private const int DefaultMarginMax = 20;
 
@@ -48,7 +60,7 @@ namespace RoundedTB
 
             if (!mw.isWindows11)
             {
-                dynamicModeRadio.Content = "Split";
+                dynamicModeLabel.Text = "Split";
                 dynamicModeRadio.ToolTip = "Split the taskbar into segments. See Help for the setup it needs on Windows 10.";
                 fillTaskSwitchToggle.Visibility = Visibility.Collapsed;
             }
@@ -61,7 +73,15 @@ namespace RoundedTB
             {
                 if (e.Key == Key.Escape)
                 {
-                    HideFlyout();
+                    // Esc steps back out of the About page first, then closes.
+                    if (AboutScroller.Visibility == Visibility.Visible)
+                    {
+                        ShowAboutPage(false);
+                    }
+                    else
+                    {
+                        HideFlyout();
+                    }
                     e.Handled = true;
                 }
             };
@@ -74,53 +94,194 @@ namespace RoundedTB
         /// </summary>
         public void Toggle()
         {
-            if (IsVisible)
+            if (IsVisible && !closing)
             {
                 HideFlyout();
             }
-            else if (DateTime.UtcNow - lastHidden > ReopenGuard)
+            else if (!closing && DateTime.UtcNow - lastHidden > ReopenGuard)
             {
                 ShowFlyout();
             }
         }
 
-        public void ShowFlyout()
+        public enum Page { Settings, About, Help }
+
+        public void ShowFlyout(Page page = Page.Settings)
         {
             LoadFromSettings();
             ApplyTheme();
             PickTarget();
-
-            if (!IsVisible)
+            if (page == Page.Help)
             {
-                // Park the hidden window on the target monitor first so that WPF picks up that
-                // monitor's DPI before it is laid out, then reveal it once it has been placed.
-                Opacity = 0;
-                hwnd = new WindowInteropHelper(this).EnsureHandle();
-                MonitorInfo(targetMonitor, out LocalPInvoke.RECT monitorRect, out _);
-                Flyout.SetWindowPos(hwnd, IntPtr.Zero, monitorRect.Left + 8, monitorRect.Top + 8, 0, 0,
-                    Flyout.SWP_NOSIZE | Flyout.SWP_NOZORDER | Flyout.SWP_NOACTIVATE);
-                Show();
+                helpTab.IsChecked = true;
+            }
+            else if (page == Page.About)
+            {
+                aboutTab.IsChecked = true;
+            }
+            ShowAboutPage(page != Page.Settings);
+
+            if (IsVisible)
+            {
+                Reposition();
+                Activate();
+                return;
             }
 
-            Reposition();
+            // Park the window, cloaked, on the target monitor first so that WPF picks up that
+            // monitor's DPI and lays out at full size; once it has been placed, animate it in.
+            hwnd = new WindowInteropHelper(this).EnsureHandle();
+            SetCloaked(true);
+            MonitorInfo(targetMonitor, out LocalPInvoke.RECT monitorRect, out _);
+            Flyout.SetWindowPos(hwnd, IntPtr.Zero, monitorRect.Left + 8, monitorRect.Top + 8, 0, 0,
+                Flyout.SWP_NOSIZE | Flyout.SWP_NOZORDER | Flyout.SWP_NOACTIVATE);
+            Show();
             Activate();
             Flyout.SetForegroundWindow(hwnd);
             Dispatcher.BeginInvoke(DispatcherPriority.Loaded, new Action(() =>
             {
                 Reposition();
-                Opacity = 1;
+                StartAnimation(opening: true, OpenDuration, () => { });
+                SetCloaked(false);
             }));
         }
 
         public void HideFlyout()
         {
-            if (!IsVisible)
+            if (!IsVisible || closing)
             {
                 return;
             }
             FlushApply();
-            Hide();
             lastHidden = DateTime.UtcNow;
+            closing = true;
+            StartAnimation(opening: false, CloseDuration, () =>
+            {
+                Hide();
+                closing = false;
+                lastHidden = DateTime.UtcNow;
+            });
+        }
+
+        // DWM rounds the window, but while the content slides with the backdrop off it has to round
+        // itself; the footer would otherwise poke square corners out.
+        private void RootBorder_SizeChanged(object sender, SizeChangedEventArgs e)
+        {
+            RootBorder.Clip = new RectangleGeometry(new Rect(e.NewSize), 8, 8);
+        }
+
+        private void SetCloaked(bool cloaked)
+        {
+            int value = cloaked ? 1 : 0;
+            Flyout.DwmSetWindowAttribute(hwnd, Flyout.DWMWA_CLOAK, ref value, sizeof(int));
+        }
+
+        /// <summary>
+        /// Turns the DWM acrylic and window border on or off. They are off while the flyout slides,
+        /// because DWM draws them across the whole window rect at once rather than with the content.
+        /// </summary>
+        private void SetBackdrop(bool on)
+        {
+            if (!SupportsSystemBackdrop)
+            {
+                return;
+            }
+            int backdrop = on ? Flyout.DWMSBT_TRANSIENTWINDOW : Flyout.DWMSBT_NONE;
+            Flyout.DwmSetWindowAttribute(hwnd, Flyout.DWMWA_SYSTEMBACKDROP_TYPE, ref backdrop, sizeof(int));
+            int border = on ? Flyout.DWMWA_COLOR_DEFAULT : Flyout.DWMWA_COLOR_NONE;
+            Flyout.DwmSetWindowAttribute(hwnd, Flyout.DWMWA_BORDER_COLOR, ref border, sizeof(int));
+            RootBorder.Background = (Brush)Resources[on ? "FlyoutTint" : "FlyoutTintSliding"];
+        }
+
+        /// <summary>
+        /// Slides the content in from (or out to) the taskbar edge. The window stays put at its final
+        /// size with the backdrop off, so its own edge masks the content and WPF redraws whole frames;
+        /// moving or clipping the window instead leaves areas WPF hasn't painted yet showing as bare
+        /// acrylic. The tinted background travels with the content, and the real acrylic comes back
+        /// once it has settled. Reposition stays out of the way while this runs.
+        /// </summary>
+        private void StartAnimation(bool opening, TimeSpan duration, Action completed)
+        {
+            if (animating)
+            {
+                StopAnimation(runCompleted: false);
+            }
+            if (!SupportsSystemBackdrop || RootBorder.ActualHeight <= 0)
+            {
+                // Without a transparent frame there is nothing to slide against.
+                SetBackdrop(opening);
+                completed();
+                return;
+            }
+
+            SetBackdrop(false);
+            animating = true;
+            animationOpening = opening;
+            animationDuration = duration;
+            animationCompleted = completed;
+            animationClock = Stopwatch.StartNew();
+            ApplyAnimationFrame(opening ? 0 : 1);
+            CompositionTarget.Rendering += OnAnimationFrame;
+        }
+
+        private bool animationOpening;
+
+        private void OnAnimationFrame(object sender, EventArgs e)
+        {
+            double t = Math.Min(1, animationClock.Elapsed.TotalMilliseconds / animationDuration.TotalMilliseconds);
+            // Opening decelerates hard into place, roughly the shell's cubic-bezier(0, 0, 0, 1);
+            // closing accelerates away.
+            double progress = animationOpening ? 1 - Math.Pow(1 - t, 5) : 1 - Math.Pow(t, 3);
+            ApplyAnimationFrame(progress);
+            if (t >= 1)
+            {
+                StopAnimation(runCompleted: true);
+            }
+        }
+
+        private void StopAnimation(bool runCompleted)
+        {
+            CompositionTarget.Rendering -= OnAnimationFrame;
+            animating = false;
+            Action completed = animationCompleted;
+            animationCompleted = null;
+            if (runCompleted)
+            {
+                completed?.Invoke();
+            }
+
+            contentSlide.X = 0;
+            contentSlide.Y = 0;
+            if (IsVisible && !closing)
+            {
+                SetBackdrop(true);
+                Reposition();
+            }
+        }
+
+        /// <summary>
+        /// Offsets the content the given fraction of the way out from the taskbar edge (1 = in place).
+        /// </summary>
+        private void ApplyAnimationFrame(double progress)
+        {
+            double remaining = 1 - progress;
+            contentSlide.X = 0;
+            contentSlide.Y = 0;
+            switch (revealEdge)
+            {
+                case RevealEdge.Bottom:
+                    contentSlide.Y = RootBorder.ActualHeight * remaining;
+                    break;
+                case RevealEdge.Top:
+                    contentSlide.Y = -RootBorder.ActualHeight * remaining;
+                    break;
+                case RevealEdge.Right:
+                    contentSlide.X = RootBorder.ActualWidth * remaining;
+                    break;
+                case RevealEdge.Left:
+                    contentSlide.X = -RootBorder.ActualWidth * remaining;
+                    break;
+            }
         }
 
         /// <summary>
@@ -173,7 +334,7 @@ namespace RoundedTB
         /// </summary>
         private void Reposition()
         {
-            if (!IsVisible || hwnd == IntPtr.Zero || repositioning)
+            if (!IsVisible || hwnd == IntPtr.Zero || repositioning || animating)
             {
                 return;
             }
@@ -210,6 +371,7 @@ namespace RoundedTB
                 int height = (int)Math.Round(Math.Min(ActualHeight, maxHeightDip) * scale);
                 int x = mon.Right - gap - width;
                 int y = mon.Bottom - gap - height;
+                revealEdge = RevealEdge.Bottom;
 
                 if (taskbarIntersects)
                 {
@@ -222,15 +384,18 @@ namespace RoundedTB
                     else if (horizontal)
                     {
                         y = tb.Bottom + gap;                    // Top taskbar
+                        revealEdge = RevealEdge.Top;
                     }
                     else if (tb.Left >= monMidX)
                     {
                         x = tb.Left - gap - width;              // Right taskbar
+                        revealEdge = RevealEdge.Right;
                     }
                     else
                     {
                         x = tb.Right + gap;                     // Left taskbar
                         x = Math.Max(x, mon.Left + gap);
+                        revealEdge = RevealEdge.Left;
                     }
                 }
 
@@ -309,11 +474,15 @@ namespace RoundedTB
             catch (Exception) { }
 
             Color accent = light ? Color.FromRgb(0x00, 0x5F, 0xB8) : Color.FromRgb(0x60, 0xCD, 0xFF);
+            // The logo's taskbar bar: a deeper shade of the same accent.
+            Color accentDeep = light ? Color.FromRgb(0x00, 0x3E, 0x92) : Color.FromRgb(0x00, 0x78, 0xD4);
             try
             {
                 var ui = new Windows.UI.ViewManagement.UISettings();
                 var c = ui.GetColorValue(light ? Windows.UI.ViewManagement.UIColorType.AccentDark1 : Windows.UI.ViewManagement.UIColorType.AccentLight2);
                 accent = Color.FromArgb(c.A, c.R, c.G, c.B);
+                var d = ui.GetColorValue(light ? Windows.UI.ViewManagement.UIColorType.AccentDark3 : Windows.UI.ViewManagement.UIColorType.AccentDark1);
+                accentDeep = Color.FromArgb(d.A, d.R, d.G, d.B);
             }
             catch (Exception) { }
 
@@ -331,6 +500,10 @@ namespace RoundedTB
                 SetBrush("FlyoutOnAccent", 0xFF, 0xFF, 0xFF, 0xFF);
                 SetBrush("FlyoutThumb", 0xFF, 0xFF, 0xFF, 0xFF);
                 SetBrush("FlyoutFallback", 0xFF, 0xF3, 0xF3, 0xF3);
+                // Laid over the system acrylic so it reads as the same material as the taskbar, which is
+                // far more opaque than the stock transient backdrop.
+                SetBrush("FlyoutTint", 0xD9, 0xEE, 0xEE, 0xEE);
+                SetBrush("FlyoutTintSliding", 0xF7, 0xEE, 0xEE, 0xEE);
                 SetBrush("FlyoutFooter", 0x08, 0x00, 0x00, 0x00);
             }
             else
@@ -338,7 +511,7 @@ namespace RoundedTB
                 SetBrush("FlyoutText", 0xFF, 0xFF, 0xFF, 0xFF);
                 SetBrush("FlyoutTextSecondary", 0xC5, 0xFF, 0xFF, 0xFF);
                 SetBrush("FlyoutTextDisabled", 0x5D, 0xFF, 0xFF, 0xFF);
-                SetBrush("FlyoutCard", 0x0D, 0xFF, 0xFF, 0xFF);
+                SetBrush("FlyoutCard", 0x0A, 0xFF, 0xFF, 0xFF);
                 SetBrush("FlyoutCardStroke", 0x19, 0x00, 0x00, 0x00);
                 SetBrush("FlyoutControl", 0x0F, 0xFF, 0xFF, 0xFF);
                 SetBrush("FlyoutControlHover", 0x15, 0xFF, 0xFF, 0xFF);
@@ -347,11 +520,16 @@ namespace RoundedTB
                 SetBrush("FlyoutOnAccent", 0xFF, 0x00, 0x00, 0x00);
                 SetBrush("FlyoutThumb", 0xFF, 0x45, 0x45, 0x45);
                 SetBrush("FlyoutFallback", 0xFF, 0x20, 0x20, 0x20);
-                SetBrush("FlyoutFooter", 0x30, 0x00, 0x00, 0x00);
+                SetBrush("FlyoutTint", 0xD9, 0x1C, 0x1C, 0x1C);
+                // Used while the flyout slides with no acrylic: without the blur, 85% would let sharp
+                // detail from the windows behind read through.
+                SetBrush("FlyoutTintSliding", 0xF7, 0x1C, 0x1C, 0x1C);
+                SetBrush("FlyoutFooter", 0x26, 0x00, 0x00, 0x00);
             }
             Resources["FlyoutAccent"] = new SolidColorBrush(accent);
+            Resources["FlyoutAccentDeep"] = new SolidColorBrush(accentDeep);
 
-            RootBorder.Background = SupportsSystemBackdrop ? Brushes.Transparent : (Brush)Resources["FlyoutFallback"];
+            RootBorder.Background = (Brush)Resources[SupportsSystemBackdrop ? "FlyoutTint" : "FlyoutFallback"];
 
             isLightTheme = light;
             ApplyDwmTheme();
@@ -771,8 +949,118 @@ namespace RoundedTB
 
         private void Help_Click(object sender, RoutedEventArgs e)
         {
-            HideFlyout();
-            new AboutWindow().Show();
+            ShowAboutPage(AboutScroller.Visibility != Visibility.Visible);
+        }
+
+        // About page
+
+        /// <summary>
+        /// Swaps the flyout between the settings and the About page. The window stays anchored to the
+        /// taskbar and resizes to the new page.
+        /// </summary>
+        private void ShowAboutPage(bool show)
+        {
+            if (show)
+            {
+                PopulateAbout();
+                if (aboutTab.IsChecked != true && helpTab.IsChecked != true && linksTab.IsChecked != true)
+                {
+                    aboutTab.IsChecked = true;
+                }
+            }
+            ContentScroller.Visibility = show ? Visibility.Collapsed : Visibility.Visible;
+            AboutScroller.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
+            helpButtonIcon.Text = show ? "" : "";
+            helpButtonText.Text = show ? "Back" : "Help & about";
+        }
+
+        private void AboutTab_Checked(object sender, RoutedEventArgs e)
+        {
+            if (!IsInitialized)
+            {
+                return;
+            }
+            aboutTabPanel.Visibility = aboutTab.IsChecked == true ? Visibility.Visible : Visibility.Collapsed;
+            helpTabPanel.Visibility = helpTab.IsChecked == true ? Visibility.Visible : Visibility.Collapsed;
+            linksTabPanel.Visibility = linksTab.IsChecked == true ? Visibility.Visible : Visibility.Collapsed;
+        }
+
+        private void PopulateAbout()
+        {
+            // The checked-in AssemblyInfo still says 1.0.0.0; don't present that as a release number.
+            Version version = typeof(SettingsFlyout).Assembly.GetName().Version;
+            infoVersion.Text = version == null || version == new Version(1, 0, 0, 0) ? "Development build" : version.ToString(3);
+            infoMode.Text = Settings.IsDynamic ? (mw.isWindows11 ? "Dynamic" : "Split") : "Basic";
+            infoArch.Text = RuntimeInformation.ProcessArchitecture.ToString().ToLowerInvariant();
+
+            try
+            {
+                var scales = new System.Collections.Generic.List<string>();
+                foreach (Types.Taskbar taskbar in mw.taskbarDetails)
+                {
+                    scales.Add($"{Math.Round(taskbar.ScaleFactor * 100)}%");
+                }
+                infoTaskbars.Text = $"{scales.Count} ({string.Join(", ", scales)} scale)";
+            }
+            catch (Exception)
+            {
+                infoTaskbars.Text = "Unknown";
+            }
+
+            try
+            {
+                using RegistryKey key = Registry.LocalMachine.OpenSubKey(@"SOFTWARE\Microsoft\Windows NT\CurrentVersion");
+                string display = key?.GetValue("DisplayVersion") as string;
+                string build = key?.GetValue("CurrentBuild") as string;
+                object ubr = key?.GetValue("UBR");
+                string fullBuild = ubr != null ? $"{build}.{ubr}" : build;
+                infoWindows.Text = string.IsNullOrEmpty(display) ? $"Build {fullBuild}" : $"{display} (build {fullBuild})";
+            }
+            catch (Exception)
+            {
+                infoWindows.Text = Environment.OSVersion.Version.ToString();
+            }
+        }
+
+        private void Hyperlink_RequestNavigate(object sender, System.Windows.Navigation.RequestNavigateEventArgs e)
+        {
+            ShellOpen(e.Uri.ToString());
+            e.Handled = true;
+        }
+
+        private void Link_Click(object sender, RoutedEventArgs e)
+        {
+            if (sender is Button button && button.CommandParameter is string url)
+            {
+                ShellOpen(url);
+            }
+        }
+
+        private void OpenConfig_Click(object sender, RoutedEventArgs e)
+        {
+            ShellOpen(mw.configPath);
+        }
+
+        private void OpenSettingsFolder_Click(object sender, RoutedEventArgs e)
+        {
+            ShellOpen(System.IO.Path.GetDirectoryName(mw.configPath));
+        }
+
+        /// <summary>
+        /// Opens a URL, file or folder with the shell. .NET Core defaults UseShellExecute to false,
+        /// which makes Process.Start throw for anything that isn't an executable.
+        /// </summary>
+        private void ShellOpen(string target)
+        {
+            try
+            {
+                Process.Start(new ProcessStartInfo(target) { UseShellExecute = true });
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"Failed to open {target}: {ex.Message}");
+                mw.interaction.AddLog($"Failed to open {target}: {ex.Message}");
+            }
         }
 
         private void Quit_Click(object sender, RoutedEventArgs e)
@@ -821,10 +1109,15 @@ namespace RoundedTB
             public const uint MONITOR_DEFAULTTONEAREST = 2;
 
             public const int DWMWA_USE_IMMERSIVE_DARK_MODE = 20;
+            public const int DWMWA_CLOAK = 13;
             public const int DWMWA_WINDOW_CORNER_PREFERENCE = 33;
             public const int DWMWA_SYSTEMBACKDROP_TYPE = 38;
             public const int DWMWCP_ROUND = 2;
+            public const int DWMSBT_NONE = 1;
             public const int DWMSBT_TRANSIENTWINDOW = 3;
+            public const int DWMWA_BORDER_COLOR = 34;
+            public const int DWMWA_COLOR_DEFAULT = unchecked((int)0xFFFFFFFF);
+            public const int DWMWA_COLOR_NONE = unchecked((int)0xFFFFFFFE);
 
             [DllImport("user32.dll", EntryPoint = "GetWindowLongW")]
             public static extern int GetWindowLong(IntPtr hWnd, int nIndex);
