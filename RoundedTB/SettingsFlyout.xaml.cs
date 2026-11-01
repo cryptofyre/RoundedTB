@@ -594,6 +594,7 @@ namespace RoundedTB
                 hoverToggle.IsChecked = s.ShowSegmentsOnHover;
                 compositionToggle.IsChecked = s.CompositionCompat;
                 autoHideToggle.IsChecked = s.AutoHide == 1;
+                watermarkToggle.IsChecked = s.RemoveInsiderWatermark;
 
                 startupToggle.IsChecked = mw.StartupCheckBox.IsChecked == true;
                 startupToggle.IsEnabled = mw.StartupCheckBox.IsEnabled;
@@ -932,6 +933,34 @@ namespace RoundedTB
             startupToggle.IsChecked = mw.StartupCheckBox.IsChecked == true;
             startupToggle.IsEnabled = mw.StartupCheckBox.IsEnabled;
             loading = false;
+        }
+
+        private void Watermark_Changed(object sender, RoutedEventArgs e)
+        {
+            if (loading || !IsInitialized)
+            {
+                return;
+            }
+            Settings.RemoveInsiderWatermark = watermarkToggle.IsChecked == true;
+            // This toggle doesn't touch the taskbar, so it skips the redraw/apply path; persist it
+            // directly and let MainWindow patch or restore Explorer in the background.
+            mw.interaction.WriteJSON();
+            watermarkStatus.Visibility = Visibility.Visible;
+            watermarkStatus.Text = Settings.RemoveInsiderWatermark ? "Removing the watermark…" : "Restoring the watermark…";
+            mw.SyncWatermarkState();
+        }
+
+        /// <summary>
+        /// Shows the result of the last watermark apply/restore. Invoked by MainWindow on the UI thread.
+        /// </summary>
+        internal void SetWatermarkStatus(bool enabled, WatermarkRemover.Result result)
+        {
+            if (!IsInitialized)
+            {
+                return;
+            }
+            watermarkStatus.Visibility = Visibility.Visible;
+            watermarkStatus.Text = result.Message;
         }
 
         private void Advanced_Changed(object sender, RoutedEventArgs e)

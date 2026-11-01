@@ -41,6 +41,10 @@ namespace RoundedTB
         private bool hoverShowTray;
         private bool hoverShowWidgets;
 
+        // The watermark patch lives in Explorer's memory, so an Explorer restart drops it. Track the
+        // invalid->valid handle transition so we can ask MainWindow to re-apply exactly once per restart.
+        private bool handlesWereValid = true;
+
         public Background()
         {
             mw = (MainWindow)Application.Current.MainWindow;
@@ -365,6 +369,14 @@ namespace RoundedTB
                         }
                         mw.taskbarDetails = taskbars;
 
+                        // Detect Explorer coming back (handles were missing, now present) and have the
+                        // watermark patch re-applied, since it didn't survive the restart.
+                        bool handlesValid = TaskbarHandlesAreValid(taskbars);
+                        if (handlesValid && !handlesWereValid)
+                        {
+                            mw.OnExplorerRecovered();
+                        }
+                        handlesWereValid = handlesValid;
 
                         System.Threading.Thread.Sleep(100);
                     }

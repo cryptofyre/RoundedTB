@@ -9,6 +9,7 @@ using System.Reflection;
 using System.Windows.Threading;
 using System.Windows.Interop;
 using DesktopBridge;
+using System.Threading;
 using System.Threading.Tasks;
 using Windows.ApplicationModel;
 using System.Diagnostics;
@@ -295,6 +296,11 @@ namespace RoundedTB
             taskbarDetails = Taskbar.GenerateTaskbarInfo(isWindows11);
 
             ApplySettingsNow();
+
+            if (activeSettings.RemoveInsiderWatermark)
+            {
+                SyncWatermarkState();
+            }
 
             if (activeSettings.IsNotFirstLaunch != true)
             {
@@ -607,6 +613,65 @@ namespace RoundedTB
         {
             ApplySettings();
             flyout?.RefreshFromSettings();
+        }
+
+        // Guards against overlapping watermark work: the toggle, startup and Explorer recovery can
+        // all ask at once, and the patch (symbol download + dbghelp + a cross-process write) must
+        // never run on the UI or worker thread.
+        private int watermarkBusy = 0;
+
+        /// <summary>
+        /// Brings the Insider watermark into line with <see cref="Types.Settings.RemoveInsiderWatermark"/>:
+        /// patches Explorer's shell32 when enabled, restores it when disabled. Runs on a background
+        /// thread and reports the outcome to the log and (if open) the flyout.
+        /// </summary>
+        public void SyncWatermarkState(int initialDelayMs = 0)
+        {
+            if (Interlocked.CompareExchange(ref watermarkBusy, 1, 0) != 0)
+            {
+                return;
+            }
+            bool enable = activeSettings.RemoveInsiderWatermark;
+            Task.Run(() =>
+            {
+                try
+                {
+                    if (initialDelayMs > 0)
+                    {
+                        Thread.Sleep(initialDelayMs);
+                    }
+                    void Log(string msg) => interaction.AddLog($"Watermark: {msg}");
+                    WatermarkRemover.Result result = enable
+                        ? WatermarkRemover.Apply(Log)
+                        : WatermarkRemover.Restore(Log);
+                    if (!result.Success)
+                    {
+                        interaction.AddLog($"Watermark: {result.Message}");
+                    }
+                    Dispatcher.BeginInvoke(new Action(() => flyout?.SetWatermarkStatus(enable, result)));
+                }
+                catch (Exception ex)
+                {
+                    interaction.AddLog($"Watermark: {ex.Message}");
+                }
+                finally
+                {
+                    Interlocked.Exchange(ref watermarkBusy, 0);
+                }
+            });
+        }
+
+        /// <summary>
+        /// Called by the worker when Explorer has restarted. The watermark patch lives in Explorer's
+        /// memory and is gone with it, so re-apply it (after a short settle so the desktop is up).
+        /// </summary>
+        public void OnExplorerRecovered()
+        {
+            if (activeSettings.RemoveInsiderWatermark)
+            {
+                interaction.AddLog("Watermark: Explorer restarted - re-applying.");
+                SyncWatermarkState(initialDelayMs: 1500);
+            }
         }
 
         public void Quit()

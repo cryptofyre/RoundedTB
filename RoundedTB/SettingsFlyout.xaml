@@ -583,6 +583,18 @@
                                 <CheckBox x:Name="autoHideToggle" Style="{StaticResource ToggleSwitch}" Content="Auto-hide the taskbar" Checked="Toggle_Changed" Unchecked="Toggle_Changed" />
                             </StackPanel>
                         </Border>
+
+                        <TextBlock Style="{StaticResource SectionHeader}" Text="Insider watermark" />
+                        <Border Style="{StaticResource Card}">
+                            <StackPanel>
+                                <CheckBox x:Name="watermarkToggle" Style="{StaticResource ToggleSwitch}" Content="Remove the Insider build watermark"
+                                          Checked="Watermark_Changed" Unchecked="Watermark_Changed"
+                                          ToolTip="Patches the build watermark out of the running Explorer. Needs the internet once per build to fetch Microsoft's symbols. Never touches the Activate Windows watermark." />
+                                <TextBlock Text="Removes the &quot;Evaluation copy / Insider Preview&quot; text in the desktop corner by patching the running Explorer, and re-applies it automatically if Explorer restarts. Downloads Microsoft's debug symbols once per build. Leaves the Activate Windows watermark alone."
+                                           Foreground="{DynamicResource FlyoutTextSecondary}" FontSize="12" Margin="0,8,0,0" TextWrapping="Wrap" />
+                                <TextBlock x:Name="watermarkStatus" Foreground="{DynamicResource FlyoutTextSecondary}" FontSize="12" Margin="0,8,0,0" TextWrapping="Wrap" Visibility="Collapsed" />
+                            </StackPanel>
+                        </Border>
                     </StackPanel>
                 </StackPanel>
             </ScrollViewer>
