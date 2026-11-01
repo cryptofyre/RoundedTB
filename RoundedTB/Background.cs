@@ -3,8 +3,6 @@ using System.Collections.Generic;
 using System.ComponentModel;
 using System.Diagnostics;
 using System.Text;
-using System.Windows;
-using System.Windows.Threading;
 
 namespace RoundedTB
 {
@@ -15,8 +13,7 @@ namespace RoundedTB
             public bool IsReload { get; set; }
         }
 
-        // Just have a reference point for the Dispatcher
-        public MainWindow mw;
+        public AppHost mw;
         bool redrawOverride = false;
         int infrequentCount = 0;
 
@@ -43,7 +40,7 @@ namespace RoundedTB
 
         public Background()
         {
-            mw = (MainWindow)Application.Current.MainWindow;
+            mw = AppHost.Instance;
         }
 
 
@@ -70,29 +67,6 @@ namespace RoundedTB
                         infrequentCount++;
                         if (infrequentCount == 10)
                         {
-                            // Check to see if settings need to be shown
-                            List<IntPtr> windowList = Interaction.GetTopLevelWindows();
-                            foreach (IntPtr hwnd in windowList)
-                            {
-                                StringBuilder windowClass = new StringBuilder(1024);
-                                StringBuilder windowTitle = new StringBuilder(1024);
-                                try
-                                {
-                                    LocalPInvoke.GetClassName(hwnd, windowClass, 1024);
-                                    LocalPInvoke.GetWindowText(hwnd, windowTitle, 1024);
-
-                                    if (windowClass.ToString().StartsWith("HwndWrapper[RoundedTB") && windowTitle.ToString() == "RoundedTB_SettingsRequest")
-                                    {
-                                        mw.Dispatcher.Invoke(() =>
-                                        {
-                                            mw.ShowSettings();
-                                        });
-                                        LocalPInvoke.SetWindowText(hwnd, "RoundedTB");
-                                    }
-                                }
-                                catch (Exception) { }
-                            }
-
                             ReloadChecker checker = new();
                             mw.taskbarDetails?.ForEach(taskbar =>
                             {
@@ -373,7 +347,7 @@ namespace RoundedTB
                 {
                     // Anything escaping here is swallowed by BackgroundWorker and handed to
                     // RunWorkerCompleted, which silently ends the loop - so log it and let
-                    // MainWindow's RunWorkerCompleted handler restart us.
+                    // AppHost's RunWorkerCompleted handler restart us.
                     mw.interaction.AddLog(ex.Message);
                     if (ex.InnerException != null)
                     {

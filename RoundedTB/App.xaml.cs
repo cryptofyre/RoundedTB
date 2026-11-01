@@ -1,36 +1,39 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Configuration;
-using System.Data;
-using System.Linq;
-using System.Threading.Tasks;
-using System.Windows;
+using System;
+using System.Threading;
+using Microsoft.UI.Xaml;
 
 namespace RoundedTB
 {
-    /// <summary>
-    /// Interaction logic for App.xaml
-    /// </summary>
     public partial class App : Application
     {
-        protected override void OnStartup(StartupEventArgs e)
+        private Mutex singleInstance;
+        private AppHost host;
+
+        public App()
         {
-            base.OnStartup(e);
-            WPFUI.Theme.Watcher.Start();
+            InitializeComponent();
+            DispatcherShutdownMode = DispatcherShutdownMode.OnExplicitShutdown;
+            UnhandledException += (_, e) =>
+            {
+                host?.RestoreTaskbars();
+                AppHost.LogError(e.Exception);
+            };
+            AppDomain.CurrentDomain.ProcessExit += (_, _) => host?.RestoreTaskbars();
         }
 
-        protected override void OnExit(ExitEventArgs e)
+        protected override void OnLaunched(LaunchActivatedEventArgs args)
         {
-            // Backstop for every exit route. The title bar's close button calls
-            // Application.Shutdown() itself, which means MainWindow.OnClosing runs with
-            // shouldReallyDieNoReally still false and skips its cleanup - leaving the
-            // taskbar clipped after the process is gone. RestoreTaskbars is idempotent,
-            // so the tray menu's "Close RoundedTB" path is unaffected.
-            // Qualified: inside App, the bare name "MainWindow" binds to the inherited
-            // Application.MainWindow property rather than to the RoundedTB.MainWindow type.
-            RoundedTB.MainWindow.Instance?.RestoreTaskbars();
-
-            base.OnExit(e);
+            singleInstance = new Mutex(true, "RoundedTB.SingleInstance", out bool created);
+            if (!created)
+            {
+                IntPtr running = Native.FindWindow(TrayIcon.WindowClass, TrayIcon.WindowClass);
+                Native.GetWindowThreadProcessId(running, out uint runningPid);
+                Native.AllowSetForegroundWindow(runningPid);
+                Native.PostMessage(running, Native.RegisterWindowMessage(TrayIcon.ShowSettingsMessageName), IntPtr.Zero, IntPtr.Zero);
+                Exit();
+                return;
+            }
+            host = new AppHost();
         }
     }
 }

@@ -1,7 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
-using System.Windows;
 
 namespace RoundedTB
 {
@@ -28,9 +27,9 @@ namespace RoundedTB
             public int X;
             public int Y;
 
-            public static implicit operator Point(POINT point)
+            public static implicit operator System.Drawing.Point(POINT point)
             {
-                return new Point(point.X, point.Y);
+                return new System.Drawing.Point(point.X, point.Y);
             }
         }
 

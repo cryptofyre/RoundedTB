@@ -9,29 +9,20 @@ on:
 
 jobs:
   build:
-    name: build-windows
+    name: build-${{ matrix.platform }}
     runs-on: windows-latest
+    strategy:
+      matrix:
+        platform: [x64, ARM64]
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-        with:
-          submodules: recursive
 
       - name: Set up .NET
         uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '10.0.x'
 
-      - name: Restore
-        run: dotnet restore RoundedTB.sln
-
       - name: Build
-        run: dotnet build RoundedTB.sln --configuration Release --no-restore
-
-      # Release ships x64 and ARM64; make sure both runtime-specific builds still compile.
-      - name: Build (win-x64)
-        run: dotnet build RoundedTB/RoundedTB.csproj --configuration Release -r win-x64 --self-contained true
-
-      - name: Build (win-arm64)
-        run: dotnet build RoundedTB/RoundedTB.csproj --configuration Release -r win-arm64 --self-contained true
+        run: dotnet build RoundedTB.sln -c Release -p:Platform=${{ matrix.platform }}

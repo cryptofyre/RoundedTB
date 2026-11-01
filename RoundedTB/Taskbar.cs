@@ -6,8 +6,6 @@ using System.Threading.Tasks;
 using Microsoft.Win32;
 using System.ComponentModel;
 using System.Diagnostics;
-using System.Windows;
-using System.Windows.Threading;
 using Newtonsoft.Json;
 using System.Runtime.InteropServices;
 using Interop.UIAutomationClient;

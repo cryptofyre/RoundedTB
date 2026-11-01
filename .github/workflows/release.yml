@@ -25,54 +25,82 @@ jobs:
   build:
     name: build-${{ matrix.rid }}
     runs-on: windows-latest
+    env:
+      MSIX_CERTIFICATE: ${{ secrets.MSIX_CERTIFICATE }}
+      MSIX_CERTIFICATE_PASSWORD: ${{ secrets.MSIX_CERTIFICATE_PASSWORD }}
     strategy:
       matrix:
-        # ARM64 is built explicitly: upstream has never shipped it, and the app runs
-        # natively on Windows on Arm. Cross-publishing from the x64 runner is fine for
-        # a self-contained .NET app.
-        rid: [win-x64, win-arm64]
+        include:
+          - rid: win-x64
+            platform: x64
+          - rid: win-arm64
+            platform: ARM64
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-        with:
-          submodules: recursive
 
       - name: Set up .NET
         uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '10.0.x'
 
-      - name: Resolve tag
+      # v1.2.3 -> 1.2.3.0; anything else (canaries, manual runs) -> 0.0.<run number>.0
+      - name: Resolve tag and version
         id: ver
         shell: pwsh
         run: |
           $tag = if ('${{ github.event_name }}' -eq 'workflow_dispatch') { '${{ inputs.tag }}' } else { '${{ github.ref_name }}' }
+          $version = if ($tag -match '^v(\d+)\.(\d+)\.(\d+)$') { "$($Matches[1]).$($Matches[2]).$($Matches[3]).0" } else { "0.0.${{ github.run_number }}.0" }
           "tag=$tag" >> $env:GITHUB_OUTPUT
+          "version=$version" >> $env:GITHUB_OUTPUT
 
-      # Self-contained, single file. Compression is not optional here: without it the
-      # exe is ~177 MB instead of ~79 MB. Trimming is unavailable - WPF does not support it.
-      - name: Publish (self-contained)
+      - name: Publish (unpackaged)
         run: >
           dotnet publish RoundedTB/RoundedTB.csproj
-          -c Release -r ${{ matrix.rid }} --self-contained true
-          -p:PublishSingleFile=true
-          -p:EnableCompressionInSingleFile=true
+          -c Release -r ${{ matrix.rid }} -p:Platform=${{ matrix.platform }}
+          -p:PublishTrimmed=true
+          -p:Version=${{ steps.ver.outputs.version }}
           -p:DebugType=none
           -o publish/RoundedTB
 
-      # Five native WPF DLLs stay outside the single file, so shipping the bare exe
-      # produces something that does not start. Always archive the whole folder.
       - name: Archive
         shell: pwsh
         run: |
           Compress-Archive -Path publish/RoundedTB -DestinationPath "RoundedTB_${{ steps.ver.outputs.tag }}_${{ matrix.rid }}.zip"
 
+      # MSIX needs a trusted signature to install, so it is only built when a certificate is configured:
+      # MSIX_CERTIFICATE (base64 .pfx) and MSIX_CERTIFICATE_PASSWORD. The certificate subject must match
+      # the Publisher in RoundedTB/Package.appxmanifest.
+      - name: Publish (MSIX)
+        if: ${{ env.MSIX_CERTIFICATE != '' }}
+        shell: pwsh
+        run: |
+          [IO.File]::WriteAllBytes("$PWD/signing.pfx", [Convert]::FromBase64String($env:MSIX_CERTIFICATE))
+          $manifest = 'RoundedTB/Package.appxmanifest'
+          (Get-Content $manifest -Raw) -replace '(<Identity[^>]*Version=")[^"]*', "`${1}${{ steps.ver.outputs.version }}" | Set-Content $manifest -NoNewline
+          dotnet publish RoundedTB/RoundedTB.csproj `
+            -c Release -r ${{ matrix.rid }} -p:Platform=${{ matrix.platform }} `
+            -p:PublishTrimmed=true `
+            -p:Version=${{ steps.ver.outputs.version }} `
+            -p:DebugType=none `
+            -p:WindowsPackageType=MSIX `
+            -p:GenerateAppxPackageOnBuild=true `
+            -p:AppxBundle=Never `
+            -p:AppxPackageSigningEnabled=true `
+            -p:PackageCertificateKeyFile="$PWD/signing.pfx" `
+            -p:PackageCertificatePassword="$env:MSIX_CERTIFICATE_PASSWORD" `
+            -p:AppxPackageDir="$PWD/msix/"
+          Remove-Item signing.pfx
+          Get-ChildItem msix -Recurse -Filter *.msix | Copy-Item -Destination "RoundedTB_${{ steps.ver.outputs.tag }}_${{ matrix.rid }}.msix"
+
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: RoundedTB-${{ matrix.rid }}
-          path: RoundedTB_*_${{ matrix.rid }}.zip
+          path: |
+            RoundedTB_*_${{ matrix.rid }}.zip
+            RoundedTB_*_${{ matrix.rid }}.msix
           if-no-files-found: error
 
   release:
@@ -101,16 +129,18 @@ jobs:
           prerelease: ${{ startsWith(steps.ver.outputs.tag, 'canary') }}
           generate_release_notes: true
           body: |
-            Self-contained builds - no .NET runtime needed.
+            Self-contained builds - no .NET or Windows App SDK runtime needed.
 
             | Download | For |
             |---|---|
             | `RoundedTB_${{ steps.ver.outputs.tag }}_win-x64.zip` | Most PCs (Intel / AMD) |
             | `RoundedTB_${{ steps.ver.outputs.tag }}_win-arm64.zip` | Windows on Arm (Snapdragon etc.) |
 
-            Extract the whole `RoundedTB` folder and run `RoundedTB.exe`; the exe
-            will not start on its own without the DLLs next to it.
+            Extract the whole `RoundedTB` folder and run `RoundedTB.exe`, or install the `.msix` for your
+            architecture when one is attached.
 
-            The binary is unsigned, so SmartScreen will warn on first run.
-          files: RoundedTB_*.zip
-          fail_on_unmatched_files: true
+            The zip builds are unsigned, so SmartScreen will warn on first run.
+          files: |
+            RoundedTB_*.zip
+            RoundedTB_*.msix
+          fail_on_unmatched_files: false

@@ -1,42 +1,57 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFramework>net10.0-windows10.0.19041.0</TargetFramework>
     <OutputType>WinExe</OutputType>
-    <UseWPF>true</UseWPF>
-    <UseWindowsForms>true</UseWindowsForms>
-    <!-- "annotations" turns on the nullable context without emitting warnings for the
-         ~4000 lines of not-yet-annotated legacy code. Types.cs opts into full checking
-         locally via #nullable enable. Flip this to "enable" in the Phase 4 state-management
-         rewrite, once the warnings are actionable rather than noise. -->
+    <TargetFramework>net10.0-windows10.0.22621.0</TargetFramework>
+    <TargetPlatformMinVersion>10.0.19041.0</TargetPlatformMinVersion>
+    <RootNamespace>RoundedTB</RootNamespace>
+    <UseWinUI>true</UseWinUI>
     <Nullable>annotations</Nullable>
-    <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <ApplicationIcon>RoundedTBCanary.ico</ApplicationIcon>
     <ApplicationManifest>app.manifest</ApplicationManifest>
-    <!-- WPF-UI 1.2.1 and the UIAutomation COM interop assemblies ship no satellite
-         resources we consume; trimming them keeps the output folder small. -->
     <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
-  </PropertyGroup>
+    <Platforms>x64;ARM64</Platforms>
+    <RuntimeIdentifiers>win-x64;win-arm64</RuntimeIdentifiers>
+    <RuntimeIdentifier Condition="'$(RuntimeIdentifier)' == '' and '$(Platform)' == 'ARM64'">win-arm64</RuntimeIdentifier>
+    <RuntimeIdentifier Condition="'$(RuntimeIdentifier)' == ''">win-x64</RuntimeIdentifier>
 
-  <!-- Personal loopback-debugging configuration retained from the original project. -->
-  <PropertyGroup Condition="'$(Configuration)|$(Platform)' == 'Remote Debug|AnyCPU'">
-    <DebugSymbols>true</DebugSymbols>
-    <OutputPath>Z:\RTBDebug\bin\</OutputPath>
+    <!-- Unpackaged by default; pass -p:WindowsPackageType=MSIX for the MSIX package. -->
+    <WindowsPackageType Condition="'$(WindowsPackageType)' == ''">None</WindowsPackageType>
+    <EnableMsixTooling>true</EnableMsixTooling>
+    <WindowsAppSDKSelfContained>true</WindowsAppSDKSelfContained>
+    <SelfContained>true</SelfContained>
+
+    <!-- UIAutomationClient is classic COM interop, which trimming otherwise disables. -->
+    <BuiltInComInteropSupport>true</BuiltInComInteropSupport>
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="DesktopBridge.Helpers" Version="1.2.1" />
+    <PackageReference Include="Microsoft.WindowsAppSDK" Version="2.6.4" />
+    <PackageReference Include="Microsoft.Windows.SDK.BuildTools" Version="10.0.28000.1721" />
+    <PackageReference Include="CommunityToolkit.WinUI.Controls.Segmented" Version="8.2.251219" />
     <PackageReference Include="Interop.UIAutomationClient" Version="10.19041.0" />
     <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
-    <PackageReference Include="WPF-UI" Version="1.2.1" />
+
+    <!-- Pulled in by the metapackage (and the toolkit) but never loaded: onnxruntime, DirectML, search. -->
+    <PackageReference Include="Microsoft.WindowsAppSDK.AI" Version="2.6.4" ExcludeAssets="all" />
+    <PackageReference Include="Microsoft.WindowsAppSDK.ML" Version="2.6.4" ExcludeAssets="all" />
+    <PackageReference Include="Microsoft.WindowsAppSDK.Search" Version="2.6.4" ExcludeAssets="all" />
+    <PackageReference Include="Microsoft.WindowsAppSDK.Widgets" Version="2.6.4" ExcludeAssets="all" />
+    <PackageReference Include="Microsoft.Windows.AI.MachineLearning" Version="2.4.89" ExcludeAssets="all" />
   </ItemGroup>
 
   <ItemGroup>
-    <Resource Include="RoundedTB.ico" />
-    <Resource Include="RoundedTBCanary.ico" />
-    <Resource Include="RoundedTBDev.ico" />
-    <Resource Include="res\TrayDark.ico" />
-    <Resource Include="res\TrayLight.ico" />
+    <!-- Settings are (de)serialised by reflection. -->
+    <TrimmerRootAssembly Include="RoundedTB" />
+    <!-- Trimming unused interface members would shift the COM vtables. -->
+    <TrimmerRootAssembly Include="Interop.UIAutomationClient" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Content Include="res\TrayDark.ico" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="res\TrayLight.ico" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="Images\*.png" />
   </ItemGroup>
 
 </Project>

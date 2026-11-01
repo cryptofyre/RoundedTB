@@ -1,6 +1,10 @@
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
+using System.IO;
+using System.Linq;
 using System.Numerics;
+using System.Runtime.InteropServices;
 using Microsoft.UI.Composition;
 using Microsoft.UI.Composition.SystemBackdrops;
 using Microsoft.UI.Dispatching;
@@ -14,11 +18,8 @@ using Microsoft.Win32;
 using Windows.Graphics;
 using Windows.UI;
 using WinRT.Interop;
-#if RTB_EXTERNAL_BACKDROP
-using Microsoft.UI.Content;
-#endif
 
-namespace RoundedTB.WinUI
+namespace RoundedTB
 {
     public sealed partial class FlyoutWindow : Window
     {
@@ -29,37 +30,33 @@ namespace RoundedTB.WinUI
 
         private enum RevealEdge { Bottom, Top, Left, Right }
 
+        private readonly AppHost host;
         private readonly IntPtr hwnd;
         private readonly Compositor compositor;
         private readonly Visual panelVisual;
-        private readonly TintedAcrylicBackdrop? acrylic;
+        private readonly TintedAcrylicBackdrop acrylic;
         private readonly TransparentBackdrop clear = new();
-#if RTB_EXTERNAL_BACKDROP
-        private readonly ContentExternalBackdropLink? backdropLink;
-        private readonly DesktopAcrylicController? linkController;
-        private readonly SystemBackdropConfiguration linkConfig = new() { IsInputActive = true };
-#endif
-        private readonly DispatcherQueueTimer saveTimer;
+        private readonly DispatcherQueueTimer applyTimer;
+        private readonly Native.SubclassProc noFrameProc;
 
-        private Types.Settings settings;
-        private bool loading = true; // until the constructor is done: sliders coerce and fire ValueChanged while loading XAML
+        // Sliders coerce and fire ValueChanged while the XAML loads, before the fields are set.
+        private bool loading = true;
         private bool isOpen;
         private bool closing;
         private bool sliding;
         private DateTime lastHidden = DateTime.MinValue;
         private RevealEdge revealEdge = RevealEdge.Bottom;
         private Vector3 hiddenTranslation;
-        private Stopwatch? openClock;
         private IntPtr targetMonitor;
-        private readonly Native.SubclassProc noFrameProc; // kept alive for the native side
 
-        public FlyoutWindow()
+        private Types.Settings Settings => host.activeSettings;
+
+        public FlyoutWindow(AppHost host)
         {
+            this.host = host;
             InitializeComponent();
             hwnd = WindowNative.GetWindowHandle(this);
 
-            // Chrome: no border or caption, not resizable, topmost, and a tool window so it has no
-            // taskbar button or Alt+Tab entry.
             OverlappedPresenter presenter = OverlappedPresenter.Create();
             presenter.SetBorderAndTitleBar(false, false);
             presenter.IsResizable = false;
@@ -68,55 +65,40 @@ namespace RoundedTB.WinUI
             presenter.IsAlwaysOnTop = true;
             AppWindow.SetPresenter(presenter);
             AppWindow.IsShownInSwitchers = false;
-            // The presenter puts WS_DLGFRAME back whenever the window is shown, which gives it a 3px
-            // non-client frame that DWM paints white. Claim the whole window as client area instead.
-            noFrameProc = NoFrameSubclassProc;
-            Native.SetWindowSubclass(hwnd, noFrameProc, 1, IntPtr.Zero);
             long ex = Native.GetWindowLongPtr(hwnd, Native.GWL_EXSTYLE);
             Native.SetWindowLongPtr(hwnd, Native.GWL_EXSTYLE, (ex | Native.WS_EX_TOOLWINDOW) & ~Native.WS_EX_APPWINDOW);
-            // Without the frame extended into the client area, the clear parts of a XAML window are black.
+
+            // The presenter re-adds WS_DLGFRAME on every show, leaving a 3px frame that DWM paints
+            // white. Claim the whole window as client area instead of fighting over styles.
+            noFrameProc = NoFrameSubclassProc;
+            Native.SetWindowSubclass(hwnd, noFrameProc, 1, IntPtr.Zero);
+            // Without this the clear parts of the window render black.
             Native.DwmExtendFrameIntoClientArea(hwnd, new Native.MARGINS { Left = -1, Right = -1, Top = -1, Bottom = -1 });
             ApplyDwmAttributes();
 
             compositor = ElementCompositionPreview.GetElementVisual(Root).Compositor;
-            // Static mask at the window edge: the panel slides in from behind it.
             ElementCompositionPreview.GetElementVisual(Root).Clip = compositor.CreateInsetClip();
             ElementCompositionPreview.SetIsTranslationEnabled(Panel, true);
             panelVisual = ElementCompositionPreview.GetElementVisual(Panel);
 
             if (DesktopAcrylicController.IsSupported())
             {
-#if RTB_EXTERNAL_BACKDROP
-                // The acrylic is placed inside the panel, so it slides and clips with it.
-                backdropLink = ContentExternalBackdropLink.Create(compositor);
-                ElementCompositionPreview.SetElementChildVisual(BackdropHost, backdropLink.PlacementVisual);
-                BackdropHost.SizeChanged += (_, e) => backdropLink.PlacementVisual.Size = new Vector2((float)e.NewSize.Width, (float)e.NewSize.Height);
-                linkController = new DesktopAcrylicController();
-                linkController.SetSystemBackdropConfiguration(linkConfig);
-                linkController.AddSystemBackdropTarget(backdropLink);
-                SystemBackdrop = clear;
-#else
                 acrylic = new TintedAcrylicBackdrop();
                 SystemBackdrop = acrylic;
-#endif
             }
             ApplyTheme();
 
-            // The window is sized to the panel; follow it when Advanced (or a mode switch) changes its height.
-            ContentStack.SizeChanged += (_, _) =>
-            {
-                if (isOpen && !sliding)
-                {
-                    Place(targetMonitor);
-                }
-            };
+            SettingsStack.SizeChanged += (_, _) => FollowContentSize();
+            AboutStack.SizeChanged += (_, _) => FollowContentSize();
 
             Activated += OnActivated;
             AppWindow.Closing += (_, e) =>
             {
-                // Alt+F4 hides rather than destroys.
-                e.Cancel = true;
-                HideFlyout();
+                if (!host.IsQuitting)
+                {
+                    e.Cancel = true;
+                    HideFlyout();
+                }
             };
             Root.KeyDown += (_, e) =>
             {
@@ -126,33 +108,36 @@ namespace RoundedTB.WinUI
                 }
             };
 
-            saveTimer = DispatcherQueue.CreateTimer();
-            saveTimer.Interval = TimeSpan.FromMilliseconds(250);
-            saveTimer.IsRepeating = false;
-            saveTimer.Tick += (_, _) => Save();
+            applyTimer = DispatcherQueue.CreateTimer();
+            applyTimer.Interval = TimeSpan.FromMilliseconds(250);
+            applyTimer.IsRepeating = false;
+            applyTimer.Tick += (_, _) => host.ApplySettings();
 
-            settings = SettingsStore.Read();
             loading = false;
         }
-
-        public bool IsOpen => isOpen;
 
         private static IntPtr NoFrameSubclassProc(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam, nuint id, IntPtr refData)
         {
             if (msg == Native.WM_NCCALCSIZE && wParam != IntPtr.Zero)
             {
-                return IntPtr.Zero; // client rect = window rect
+                return IntPtr.Zero;
             }
             return Native.DefSubclassProc(hWnd, msg, wParam, lParam);
         }
 
         #region Theme and backdrop
 
-        // RTB_THEME=light|dark overrides the shell theme, for checking both without changing it.
+        // RTB_THEME=light|dark overrides the shell theme, for testing.
         private static bool SystemUsesLightTheme() =>
             Environment.GetEnvironmentVariable("RTB_THEME") is "light" or "dark"
                 ? Environment.GetEnvironmentVariable("RTB_THEME") == "light"
                 : Registry.GetValue(@"HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize", "SystemUsesLightTheme", 0) is int v && v == 1;
+
+        private void SetCloaked(bool cloaked)
+        {
+            int value = cloaked ? 1 : 0;
+            Native.DwmSetWindowAttribute(hwnd, Native.DWMWA_CLOAK, ref value, sizeof(int));
+        }
 
         private void ApplyDwmAttributes()
         {
@@ -162,55 +147,36 @@ namespace RoundedTB.WinUI
             Native.DwmSetWindowAttribute(hwnd, Native.DWMWA_BORDER_COLOR, ref border, sizeof(int));
         }
 
-        /// <summary>
-        /// Follows the shell theme (SystemUsesLightTheme) like the taskbar does, rather than the
-        /// app theme, and tints the acrylic towards the taskbar's material.
-        /// </summary>
+        /// <summary>Follows the shell theme (SystemUsesLightTheme), like the taskbar, not the app theme.</summary>
         private void ApplyTheme()
         {
             bool light = SystemUsesLightTheme();
             Root.RequestedTheme = light ? ElementTheme.Light : ElementTheme.Dark;
             acrylic?.SetTheme(light);
-#if RTB_EXTERNAL_BACKDROP
-            if (linkController != null)
-            {
-                linkConfig.Theme = light ? SystemBackdropTheme.Light : SystemBackdropTheme.Dark;
-                TintedAcrylicBackdrop.Configure(linkController, light);
-            }
-#endif
             UpdatePanelBackground();
         }
 
-        private bool UsesSlidingSwap => acrylic != null;
-
         /// <summary>
-        /// The panel's own fill. With window-level acrylic it is clear at rest; while sliding, the
-        /// acrylic is switched off (it covers the whole window at once rather than moving with the
-        /// panel) and a near-opaque tint travels with the content instead. Without acrylic at all
-        /// the panel is solid.
+        /// Window-level acrylic covers the whole window at once instead of moving with the panel, so
+        /// it is swapped for a near-opaque tint while the panel slides.
         /// </summary>
         private void UpdatePanelBackground()
         {
-            bool light = Root.RequestedTheme == ElementTheme.Light;
-            byte shade = light ? (byte)0xEE : (byte)0x1C;
-            if (!DesktopAcrylicController.IsSupported())
+            byte shade = Root.RequestedTheme == ElementTheme.Light ? (byte)0xEE : (byte)0x1C;
+            if (acrylic == null)
             {
                 Panel.Background = new SolidColorBrush(Color.FromArgb(0xFF, shade, shade, shade));
             }
-            else if (UsesSlidingSwap && sliding)
-            {
-                Panel.Background = new SolidColorBrush(Color.FromArgb(0xF7, shade, shade, shade));
-            }
             else
             {
-                Panel.Background = null;
+                Panel.Background = sliding ? new SolidColorBrush(Color.FromArgb(0xF7, shade, shade, shade)) : null;
             }
         }
 
         private void SetSliding(bool value)
         {
             sliding = value;
-            if (UsesSlidingSwap)
+            if (acrylic != null)
             {
                 SystemBackdrop = value ? clear : acrylic;
             }
@@ -221,32 +187,56 @@ namespace RoundedTB.WinUI
 
         #region Open / close
 
-        /// <summary>Toggles the flyout, the way a tray click should.</summary>
-        public void Toggle(Stopwatch clickClock)
+        public void Toggle()
         {
             if (isOpen && !closing)
             {
                 HideFlyout();
                 return;
             }
-            // A click on the tray icon deactivates (and so hides) the flyout just before the click
-            // itself arrives; don't reopen it straight away.
+            // Clicking the tray icon deactivates (and so hides) the flyout just before the click arrives.
             if ((DateTime.UtcNow - lastHidden).TotalMilliseconds < 300)
             {
                 return;
             }
-            ShowFlyout(clickClock);
+            ShowFlyout(helpPage: false);
         }
 
-        public void ShowFlyout(Stopwatch clickClock)
+        public void ShowFlyout(bool helpPage)
         {
-            openClock = clickClock;
-            settings = SettingsStore.Read();
+            // The XAML tree can't be measured until the window has been shown once, so the first
+            // open shows it cloaked and carries on when it has loaded.
+            if (!Root.IsLoaded)
+            {
+                SetCloaked(true);
+                Root.Loaded += OnFirstLoad;
+                AppWindow.Show(false);
+                void OnFirstLoad(object sender, RoutedEventArgs e)
+                {
+                    Root.Loaded -= OnFirstLoad;
+                    AppWindow.Hide();
+                    SetCloaked(false);
+                    ShowFlyout(helpPage);
+                }
+                return;
+            }
+
+            ShowAboutPage(helpPage);
+            if (helpPage)
+            {
+                AboutTabs.SelectedIndex = 1;
+            }
+            if (isOpen && !closing)
+            {
+                Activate();
+                return;
+            }
+
             LoadFromSettings();
             ApplyTheme();
             Native.GetCursorPos(out Native.POINT cursor);
             targetMonitor = Native.MonitorFromPoint(cursor, Native.MONITOR_DEFAULTTONEAREST);
-            Place(targetMonitor);
+            Place();
 
             panelVisual.StopAnimation("Translation");
             panelVisual.Properties.InsertVector3("Translation", hiddenTranslation);
@@ -258,23 +248,20 @@ namespace RoundedTB.WinUI
             Activate();
             Native.SetForegroundWindow(hwnd);
 
-            // Start the slide on the first frame XAML renders, so a cold first open doesn't
-            // spend half the animation before there is anything on screen.
-            void OnFirstFrame(object? sender, object e)
+            // Start on the first rendered frame, so a cold open doesn't lose half the slide.
+            void OnFirstFrame(object sender, object e)
             {
-                Microsoft.UI.Xaml.Media.CompositionTarget.Rendering -= OnFirstFrame;
-                Timing.Mark(openClock, "first frame");
+                CompositionTarget.Rendering -= OnFirstFrame;
                 Slide(opening: true, () =>
                 {
-                    Timing.Mark(openClock, "slide in done");
                     if (isOpen && !closing)
                     {
                         SetSliding(false);
-                        Place(targetMonitor);
+                        Place();
                     }
                 });
             }
-            Microsoft.UI.Xaml.Media.CompositionTarget.Rendering += OnFirstFrame;
+            CompositionTarget.Rendering += OnFirstFrame;
         }
 
         public void HideFlyout()
@@ -284,11 +271,7 @@ namespace RoundedTB.WinUI
                 return;
             }
             closing = true;
-            if (saveTimer.IsRunning)
-            {
-                saveTimer.Stop();
-                Save();
-            }
+            FlushPendingChanges();
             SetSliding(true);
             Slide(opening: false, () =>
             {
@@ -308,11 +291,6 @@ namespace RoundedTB.WinUI
             }
         }
 
-        /// <summary>
-        /// Slides the panel in from (or out to) the taskbar edge: a Translation animation on the
-        /// panel, masked by the inset clip on the window root. It runs on the compositor, so a busy
-        /// UI thread can't stall it.
-        /// </summary>
         private void Slide(bool opening, Action completed)
         {
             CubicBezierEasingFunction easing = opening
@@ -329,20 +307,26 @@ namespace RoundedTB.WinUI
             batch.Completed += (_, _) => completed();
         }
 
-        /// <summary>
-        /// Sizes the window to the panel's content (capped at what fits beside the taskbar) and
-        /// places it 12px (scaled) from the screen edge and away from that monitor's taskbar, all
-        /// in that monitor's physical pixels.
-        /// </summary>
-        private void Place(IntPtr monitor)
+        private void FollowContentSize()
         {
-            Native.GetMonitor(monitor, out Native.RECT mon, out Native.RECT work, out double scale);
-            Native.RECT tb = Native.FindTaskbarRect(monitor, mon, work);
+            if (isOpen && !sliding)
+            {
+                Place();
+            }
+        }
+
+        /// <summary>
+        /// Sizes the window to the panel (capped to what fits beside the taskbar) and places it 12px
+        /// from the screen edge and the taskbar, in the target monitor's physical pixels.
+        /// </summary>
+        private void Place()
+        {
+            Native.GetMonitor(targetMonitor, out Native.RECT mon, out Native.RECT work, out double scale);
+            Native.RECT tb = Native.FindTaskbarRect(targetMonitor, mon, work);
 
             int gap = (int)Math.Round(12 * scale);
-            int tbWidth = tb.Right - tb.Left, tbHeight = tb.Bottom - tb.Top;
-            bool horizontal = tbWidth >= tbHeight;
-            int available = mon.Bottom - mon.Top - 2 * gap - (horizontal ? tbHeight : 0);
+            bool horizontal = tb.Right - tb.Left >= tb.Bottom - tb.Top;
+            int available = mon.Bottom - mon.Top - 2 * gap - (horizontal ? tb.Bottom - tb.Top : 0);
 
             Panel.MaxHeight = available / scale;
             Panel.Measure(new Windows.Foundation.Size(PanelWidth, double.PositiveInfinity));
@@ -374,7 +358,7 @@ namespace RoundedTB.WinUI
             }
             AppWindow.MoveAndResize(new RectInt32(x, y, width, height));
 
-            // Translation is in DIPs. Travel the panel's full size so it starts fully behind the edge.
+            // Translation is in DIPs; travel the full size so the panel starts behind the edge.
             float travelY = (float)(height / scale) + 2;
             float travelX = (float)PanelWidth + 2;
             hiddenTranslation = revealEdge switch
@@ -388,25 +372,48 @@ namespace RoundedTB.WinUI
 
         #endregion
 
-
         #region Settings <-> controls
 
-        private Types.SegmentSettings MainLayout => settings.IsDynamic ? settings.DynamicAppListLayout : settings.SimpleTaskbarLayout;
+        /// <summary>The main Shape controls write every layout; this is the one drawn in the current mode.</summary>
+        private Types.SegmentSettings MainLayout => Settings.IsDynamic ? Settings.DynamicAppListLayout : Settings.SimpleTaskbarLayout;
 
         private Types.SegmentSettings SelectedSegmentLayout => SegmentSegmented.SelectedIndex switch
         {
-            1 => settings.DynamicTrayLayout,
-            2 => settings.DynamicWidgetsLayout,
-            3 => settings.DynamicSecondaryClockLayout,
-            _ => settings.DynamicAppListLayout,
+            1 => Settings.DynamicTrayLayout,
+            2 => Settings.DynamicWidgetsLayout,
+            3 => Settings.DynamicSecondaryClockLayout,
+            _ => Settings.DynamicAppListLayout,
         };
 
-        private void LoadFromSettings()
+        public void RefreshFromSettings()
+        {
+            if (isOpen)
+            {
+                LoadFromSettings();
+            }
+        }
+
+        public void FlushPendingChanges()
+        {
+            if (applyTimer.IsRunning)
+            {
+                applyTimer.Stop();
+                host.ApplySettings();
+            }
+        }
+
+        private void ScheduleApply()
+        {
+            applyTimer.Stop();
+            applyTimer.Start();
+        }
+
+        private async void LoadFromSettings()
         {
             loading = true;
             try
             {
-                Types.Settings s = settings;
+                Types.Settings s = Settings;
                 ModeSegmented.SelectedIndex = s.IsDynamic ? 1 : 0;
 
                 Types.SegmentSettings main = MainLayout;
@@ -438,12 +445,17 @@ namespace RoundedTB.WinUI
                 loading = false;
             }
             UpdateLabelsAndStates();
+
+            (bool enabled, bool canChange) = await host.GetRunAtStartupAsync();
+            loading = true;
+            StartupToggle.IsOn = enabled;
+            StartupToggle.IsEnabled = canChange;
+            loading = false;
         }
 
+        /// <summary>Widens the range rather than letting the slider silently clamp a saved value.</summary>
         private static void SetSlider(Slider slider, int value, int defaultMax)
         {
-            // Configs written by the old text boxes can hold anything; widen the range rather than
-            // let the slider's coercion silently change a saved value.
             slider.Minimum = Math.Min(0, value);
             slider.Maximum = Math.Max(defaultMax, value);
             slider.Value = value;
@@ -466,7 +478,7 @@ namespace RoundedTB.WinUI
                 SegWidthPanel.Visibility = hasWidth ? Visibility.Visible : Visibility.Collapsed;
                 if (hasWidth)
                 {
-                    int width = SegmentSegmented.SelectedIndex == 2 ? settings.WidgetsWidth : settings.ClockWidth;
+                    int width = SegmentSegmented.SelectedIndex == 2 ? Settings.WidgetsWidth : Settings.ClockWidth;
                     SegWidthSlider.Minimum = Math.Min(40, width);
                     SegWidthSlider.Maximum = Math.Max(400, width);
                     SegWidthSlider.Value = width;
@@ -489,33 +501,52 @@ namespace RoundedTB.WinUI
             LinkedMarginPanel.Visibility = linked ? Visibility.Visible : Visibility.Collapsed;
             SplitMarginPanel.Visibility = linked ? Visibility.Collapsed : Visibility.Visible;
 
-            bool dynamic = settings.IsDynamic;
+            bool dynamic = Settings.IsDynamic;
             SegmentsSection.Visibility = dynamic ? Visibility.Visible : Visibility.Collapsed;
             SegmentLayoutSection.Visibility = dynamic ? Visibility.Visible : Visibility.Collapsed;
             HoverToggle.IsEnabled = dynamic;
 
-            // Hover mode drives tray/widgets visibility itself.
-            ShowTrayToggle.IsEnabled = !settings.ShowSegmentsOnHover;
-            ShowWidgetsToggle.IsEnabled = !settings.ShowSegmentsOnHover;
-            FillTaskSwitchToggle.IsEnabled = settings.FillOnMaximise;
+            // Hover mode drives tray and widget visibility itself.
+            ShowTrayToggle.IsEnabled = !Settings.ShowSegmentsOnHover;
+            ShowWidgetsToggle.IsEnabled = !Settings.ShowSegmentsOnHover;
+            FillTaskSwitchToggle.IsEnabled = Settings.FillOnMaximise && host.isWindows11;
         }
 
         private Types.SegmentSettings ReadMainShape()
         {
-            int radius = (int)RadiusSlider.Value;
-            if (LinkMarginsToggle.IsOn)
-            {
-                int m = (int)MarginAllSlider.Value;
-                return new Types.SegmentSettings { CornerRadius = radius, MarginTop = m, MarginBottom = m, MarginLeft = m, MarginRight = m };
-            }
+            bool linked = LinkMarginsToggle.IsOn;
+            int all = (int)MarginAllSlider.Value;
             return new Types.SegmentSettings
             {
-                CornerRadius = radius,
-                MarginTop = (int)MarginTopSlider.Value,
-                MarginBottom = (int)MarginBottomSlider.Value,
-                MarginLeft = (int)MarginLeftSlider.Value,
-                MarginRight = (int)MarginRightSlider.Value,
+                CornerRadius = (int)RadiusSlider.Value,
+                MarginTop = linked ? all : (int)MarginTopSlider.Value,
+                MarginBottom = linked ? all : (int)MarginBottomSlider.Value,
+                MarginLeft = linked ? all : (int)MarginLeftSlider.Value,
+                MarginRight = linked ? all : (int)MarginRightSlider.Value,
             };
+        }
+
+        private void SetAllLayouts(Types.SegmentSettings shape)
+        {
+            Settings.SimpleTaskbarLayout = Copy(shape);
+            Settings.DynamicAppListLayout = Copy(shape);
+            Settings.DynamicTrayLayout = Copy(shape);
+            Settings.DynamicWidgetsLayout = Copy(shape);
+            Settings.DynamicSecondaryClockLayout = Copy(shape);
+        }
+
+        /// <summary>Keeps hand-tuned segment layouts when switching to dynamic.</summary>
+        private void SetDynamicLayoutsIfUniform(Types.SegmentSettings shape)
+        {
+            Types.Settings s = Settings;
+            if (Same(s.DynamicAppListLayout, s.DynamicTrayLayout) && Same(s.DynamicAppListLayout, s.DynamicWidgetsLayout)
+                && Same(s.DynamicAppListLayout, s.DynamicSecondaryClockLayout))
+            {
+                s.DynamicAppListLayout = Copy(shape);
+                s.DynamicTrayLayout = Copy(shape);
+                s.DynamicWidgetsLayout = Copy(shape);
+                s.DynamicSecondaryClockLayout = Copy(shape);
+            }
         }
 
         private static Types.SegmentSettings Copy(Types.SegmentSettings s) => new()
@@ -527,33 +558,11 @@ namespace RoundedTB.WinUI
             MarginRight = s.MarginRight,
         };
 
-        /// <summary>The main Shape controls write the same shape to all five layouts.</summary>
-        private void SetAllLayouts(Types.SegmentSettings shape)
-        {
-            settings.SimpleTaskbarLayout = Copy(shape);
-            settings.DynamicAppListLayout = Copy(shape);
-            settings.DynamicTrayLayout = Copy(shape);
-            settings.DynamicWidgetsLayout = Copy(shape);
-            settings.DynamicSecondaryClockLayout = Copy(shape);
-        }
-
-        private void ScheduleSave()
-        {
-            saveTimer.Stop();
-            saveTimer.Start();
-        }
-
-        private void Save()
-        {
-            try
-            {
-                SettingsStore.Write(settings);
-            }
-            catch (Exception ex)
-            {
-                Debug.WriteLine($"Saving settings failed: {ex.Message}");
-            }
-        }
+        private static bool Same(Types.SegmentSettings a, Types.SegmentSettings b) =>
+            a == null || b == null
+                ? a == b
+                : a.CornerRadius == b.CornerRadius && a.MarginTop == b.MarginTop && a.MarginBottom == b.MarginBottom
+                    && a.MarginLeft == b.MarginLeft && a.MarginRight == b.MarginRight;
 
         #endregion
 
@@ -566,21 +575,29 @@ namespace RoundedTB.WinUI
                 return;
             }
             bool dynamic = ModeSegmented.SelectedIndex == 1;
-            if (dynamic == settings.IsDynamic)
+            if (dynamic == Settings.IsDynamic)
             {
                 return;
             }
-            settings.IsDynamic = dynamic;
-            if (dynamic && !settings.ShowSegmentsOnHover)
+
+            // Carry the visible shape across so switching modes doesn't make it jump.
+            Types.SegmentSettings current = ReadMainShape();
+            Settings.IsDynamic = dynamic;
+            if (dynamic)
             {
-                settings.ShowTray = true;
+                if (!Settings.ShowSegmentsOnHover)
+                {
+                    Settings.ShowTray = true;
+                }
+                SetDynamicLayoutsIfUniform(current);
             }
-            else if (!dynamic)
+            else
             {
-                settings.ShowSegmentsOnHover = false;
+                Settings.ShowSegmentsOnHover = false;
+                Settings.SimpleTaskbarLayout = Copy(current);
             }
             LoadFromSettings();
-            ScheduleSave();
+            ScheduleApply();
         }
 
         private void MainShape_ValueChanged(object sender, RangeBaseValueChangedEventArgs e)
@@ -589,17 +606,10 @@ namespace RoundedTB.WinUI
             {
                 return;
             }
-            if (ReferenceEquals(sender, MarginAllSlider))
-            {
-                // Keep the split sliders in step so unlinking starts from the same values.
-                loading = true;
-                MarginTopSlider.Value = MarginBottomSlider.Value = MarginLeftSlider.Value = MarginRightSlider.Value = MarginAllSlider.Value;
-                loading = false;
-            }
             SetAllLayouts(ReadMainShape());
             LoadSegment();
             UpdateLabelsAndStates();
-            ScheduleSave();
+            ScheduleApply();
         }
 
         private void LinkMargins_Toggled(object sender, RoutedEventArgs e)
@@ -608,15 +618,21 @@ namespace RoundedTB.WinUI
             {
                 return;
             }
+            loading = true;
             if (LinkMarginsToggle.IsOn)
             {
-                loading = true;
-                MarginAllSlider.Value = MarginTopSlider.Value;
-                loading = false;
-                SetAllLayouts(ReadMainShape());
-                ScheduleSave();
+                SetSlider(MarginAllSlider, (int)MarginTopSlider.Value, DefaultMarginMax);
             }
-            UpdateLabelsAndStates();
+            else
+            {
+                int all = (int)MarginAllSlider.Value;
+                SetSlider(MarginTopSlider, all, DefaultMarginMax);
+                SetSlider(MarginBottomSlider, all, DefaultMarginMax);
+                SetSlider(MarginLeftSlider, all, DefaultMarginMax);
+                SetSlider(MarginRightSlider, all, DefaultMarginMax);
+            }
+            loading = false;
+            MainShape_ValueChanged(sender, null);
         }
 
         private void Segment_SelectionChanged(object sender, SelectionChangedEventArgs e)
@@ -643,14 +659,14 @@ namespace RoundedTB.WinUI
             layout.MarginRight = (int)SegRightSlider.Value;
             if (SegmentSegmented.SelectedIndex == 2)
             {
-                settings.WidgetsWidth = (int)SegWidthSlider.Value;
+                Settings.WidgetsWidth = (int)SegWidthSlider.Value;
             }
             else if (SegmentSegmented.SelectedIndex == 3)
             {
-                settings.ClockWidth = (int)SegWidthSlider.Value;
+                Settings.ClockWidth = (int)SegWidthSlider.Value;
             }
             UpdateLabelsAndStates();
-            ScheduleSave();
+            ScheduleApply();
         }
 
         private void Toggle_Toggled(object sender, RoutedEventArgs e)
@@ -659,67 +675,121 @@ namespace RoundedTB.WinUI
             {
                 return;
             }
-            settings.ShowTray = ShowTrayToggle.IsOn;
-            settings.ShowWidgets = ShowWidgetsToggle.IsOn;
-            settings.ShowSecondaryClock = ShowClockToggle.IsOn;
-            settings.FillOnMaximise = FillMaximisedToggle.IsOn;
-            settings.FillOnTaskSwitch = FillTaskSwitchToggle.IsOn;
-            settings.ShowSegmentsOnHover = HoverToggle.IsOn;
-            settings.CompositionCompat = CompositionToggle.IsOn;
-            settings.AutoHide = AutoHideToggle.IsOn ? 1 : 0;
+            loading = true;
+            if (ReferenceEquals(sender, HoverToggle))
+            {
+                ShowTrayToggle.IsOn = !HoverToggle.IsOn;
+                ShowWidgetsToggle.IsOn = !HoverToggle.IsOn;
+            }
+            if (ReferenceEquals(sender, FillMaximisedToggle) && !FillMaximisedToggle.IsOn)
+            {
+                FillTaskSwitchToggle.IsOn = false;
+            }
+            loading = false;
+
+            Types.Settings s = Settings;
+            s.ShowTray = ShowTrayToggle.IsOn;
+            s.ShowWidgets = ShowWidgetsToggle.IsOn;
+            s.ShowSecondaryClock = ShowClockToggle.IsOn;
+            s.FillOnMaximise = FillMaximisedToggle.IsOn;
+            s.FillOnTaskSwitch = s.FillOnMaximise && FillTaskSwitchToggle.IsOn;
+            s.ShowSegmentsOnHover = HoverToggle.IsOn;
+            s.CompositionCompat = CompositionToggle.IsOn;
+            s.AutoHide = AutoHideToggle.IsOn ? 1 : 0;
             UpdateLabelsAndStates();
-            ScheduleSave();
+            ScheduleApply();
         }
 
-        private void OpenConfig_Click(object sender, RoutedEventArgs e)
+        private async void Startup_Toggled(object sender, RoutedEventArgs e)
+        {
+            if (loading)
+            {
+                return;
+            }
+            await host.SetRunAtStartupAsync(StartupToggle.IsOn);
+            (bool enabled, bool canChange) = await host.GetRunAtStartupAsync();
+            loading = true;
+            StartupToggle.IsOn = enabled;
+            StartupToggle.IsEnabled = canChange;
+            loading = false;
+        }
+
+        private void Help_Click(object sender, RoutedEventArgs e) => ShowAboutPage(AboutPage.Visibility != Visibility.Visible);
+
+        private void ShowAboutPage(bool show)
+        {
+            if (show)
+            {
+                PopulateAbout();
+                if (AboutTabs.SelectedIndex < 0)
+                {
+                    AboutTabs.SelectedIndex = 0;
+                }
+            }
+            SettingsPage.Visibility = show ? Visibility.Collapsed : Visibility.Visible;
+            AboutPage.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
+            HelpButtonIcon.Glyph = show ? "" : "";
+            HelpButtonText.Text = show ? "Back" : "Help & about";
+        }
+
+        private void AboutTabs_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            AboutTabPanel.Visibility = AboutTabs.SelectedIndex == 0 ? Visibility.Visible : Visibility.Collapsed;
+            HelpTabPanel.Visibility = AboutTabs.SelectedIndex == 1 ? Visibility.Visible : Visibility.Collapsed;
+            LinksTabPanel.Visibility = AboutTabs.SelectedIndex == 2 ? Visibility.Visible : Visibility.Collapsed;
+        }
+
+        private void PopulateAbout()
+        {
+            Version version = typeof(FlyoutWindow).Assembly.GetName().Version;
+            InfoVersion.Text = version == null || version == new Version(1, 0, 0, 0) ? "Development build" : version.ToString(3);
+            InfoMode.Text = Settings.IsDynamic ? (host.isWindows11 ? "Dynamic" : "Split") : "Basic";
+            InfoArch.Text = RuntimeInformation.ProcessArchitecture.ToString().ToLowerInvariant();
+
+            try
+            {
+                List<string> scales = host.taskbarDetails.Select(t => $"{Math.Round(t.ScaleFactor * 100)}%").ToList();
+                InfoTaskbars.Text = $"{scales.Count} ({string.Join(", ", scales)} scale)";
+            }
+            catch (InvalidOperationException)
+            {
+                InfoTaskbars.Text = "Unknown";
+            }
+
+            using RegistryKey key = Registry.LocalMachine.OpenSubKey(@"SOFTWARE\Microsoft\Windows NT\CurrentVersion");
+            string display = key?.GetValue("DisplayVersion") as string;
+            string build = key?.GetValue("CurrentBuild") as string;
+            object ubr = key?.GetValue("UBR");
+            string fullBuild = ubr != null ? $"{build}.{ubr}" : build;
+            InfoWindows.Text = string.IsNullOrEmpty(display) ? $"Build {fullBuild}" : $"{display} (build {fullBuild})";
+        }
+
+        private void OpenConfig_Click(object sender, RoutedEventArgs e) => ShellOpen(host.configPath);
+
+        private void OpenSettingsFolder_Click(object sender, RoutedEventArgs e) => ShellOpen(Path.GetDirectoryName(host.configPath));
+
+        private void ShellOpen(string target)
         {
             HideFlyout();
             try
             {
-                Process.Start(new ProcessStartInfo(SettingsStore.ConfigPath) { UseShellExecute = true });
+                Process.Start(new ProcessStartInfo(target) { UseShellExecute = true });
             }
             catch (Exception ex)
             {
-                Debug.WriteLine($"Could not open settings file: {ex.Message}");
+                host.interaction.AddLog($"Failed to open {target}: {ex.Message}");
             }
         }
 
-        private void Quit_Click(object sender, RoutedEventArgs e) => ((App)Application.Current).Quit();
+        private void Quit_Click(object sender, RoutedEventArgs e) => host.Quit();
 
         #endregion
     }
 
-    /// <summary>A clear window background, so only the panel (and its acrylic) is visible.</summary>
-    internal sealed partial class TransparentBackdrop : Microsoft.UI.Xaml.Media.SystemBackdrop
+    /// <summary>Desktop acrylic tinted towards the taskbar's material; DesktopAcrylicBackdrop has no tint.</summary>
+    internal sealed partial class TintedAcrylicBackdrop : SystemBackdrop
     {
-        private Windows.UI.Composition.Compositor? compositor;
-
-        protected override void OnTargetConnected(ICompositionSupportsSystemBackdrop connectedTarget, XamlRoot xamlRoot)
-        {
-            base.OnTargetConnected(connectedTarget, xamlRoot);
-            // The window-level target lives on the system compositor, not the app one.
-            Native.EnsureSystemDispatcherQueue();
-            compositor ??= new Windows.UI.Composition.Compositor();
-            connectedTarget.SystemBackdrop = compositor.CreateColorBrush(Color.FromArgb(0, 0, 0, 0));
-        }
-
-        protected override void OnTargetDisconnected(ICompositionSupportsSystemBackdrop disconnectedTarget)
-        {
-            disconnectedTarget.SystemBackdrop = null;
-            base.OnTargetDisconnected(disconnectedTarget);
-        }
-    }
-}
-
-namespace RoundedTB.WinUI
-{
-    /// <summary>
-    /// Desktop acrylic with a tint close to the taskbar's material. The built-in
-    /// DesktopAcrylicBackdrop doesn't expose the tint, so this wraps the controller directly.
-    /// </summary>
-    internal sealed partial class TintedAcrylicBackdrop : Microsoft.UI.Xaml.Media.SystemBackdrop
-    {
-        private readonly System.Collections.Generic.Dictionary<ICompositionSupportsSystemBackdrop, (DesktopAcrylicController Controller, SystemBackdropConfiguration Config)> targets = new();
+        private readonly Dictionary<ICompositionSupportsSystemBackdrop, (DesktopAcrylicController Controller, SystemBackdropConfiguration Config)> targets = new();
         private bool light;
 
         public void SetTheme(bool useLight)
@@ -732,10 +802,10 @@ namespace RoundedTB.WinUI
             }
         }
 
-        public static void Configure(DesktopAcrylicController controller, bool light)
+        private static void Configure(DesktopAcrylicController controller, bool light)
         {
-            controller.Kind = DesktopAcrylicKind.Base;
             Color tint = light ? Color.FromArgb(0xFF, 0xEE, 0xEE, 0xEE) : Color.FromArgb(0xFF, 0x1C, 0x1C, 0x1C);
+            controller.Kind = DesktopAcrylicKind.Base;
             controller.TintColor = tint;
             controller.TintOpacity = 0.6f;
             controller.LuminosityOpacity = 0.85f;
@@ -746,7 +816,7 @@ namespace RoundedTB.WinUI
         {
             base.OnTargetConnected(connectedTarget, xamlRoot);
             DesktopAcrylicController controller = new();
-            // A flyout is only visible while active; never fall back to the inactive solid colour.
+            // The flyout is only visible while active, so never fall back to the inactive solid colour.
             SystemBackdropConfiguration config = new() { IsInputActive = true, Theme = light ? SystemBackdropTheme.Light : SystemBackdropTheme.Dark };
             Configure(controller, light);
             controller.SetSystemBackdropConfiguration(config);
@@ -762,6 +832,26 @@ namespace RoundedTB.WinUI
                 entry.Controller.RemoveSystemBackdropTarget(disconnectedTarget);
                 entry.Controller.Dispose();
             }
+        }
+    }
+
+    internal sealed partial class TransparentBackdrop : SystemBackdrop
+    {
+        private Windows.UI.Composition.Compositor compositor;
+
+        protected override void OnTargetConnected(ICompositionSupportsSystemBackdrop connectedTarget, XamlRoot xamlRoot)
+        {
+            base.OnTargetConnected(connectedTarget, xamlRoot);
+            // The window-level target is on the system compositor, not the app one.
+            Native.EnsureSystemDispatcherQueue();
+            compositor ??= new Windows.UI.Composition.Compositor();
+            connectedTarget.SystemBackdrop = compositor.CreateColorBrush(Color.FromArgb(0, 0, 0, 0));
+        }
+
+        protected override void OnTargetDisconnected(ICompositionSupportsSystemBackdrop disconnectedTarget)
+        {
+            disconnectedTarget.SystemBackdrop = null;
+            base.OnTargetDisconnected(disconnectedTarget);
         }
     }
 }

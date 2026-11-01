@@ -1,5 +1,7 @@
 # WinUI 3 settings-flyout spike: results
 
+Historical: the spike project in `RoundedTB.WinUI/` has since become the app in `RoundedTB/`.
+
 Spike branch `spike/winui3-flyout` (off `feature/taskbar-flyout` @ 8d54121). Measured 2026-11-01 on
 Windows on ARM64, Insider 28120, 175% scaling, 3270x2180, dark theme.
 

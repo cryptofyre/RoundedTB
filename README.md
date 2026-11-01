@@ -13,7 +13,7 @@ Grab the latest build from the [releases page](https://github.com/cryptofyre/Rou
 | `RoundedTB_<version>_win-x64.zip` | Most PCs (Intel / AMD) |
 | `RoundedTB_<version>_win-arm64.zip` | Windows on Arm (Snapdragon etc.) |
 
-Builds are self-contained, so no .NET runtime is needed. Extract the whole `RoundedTB` folder and run `RoundedTB.exe` — the exe won't start without the DLLs next to it. The binary is unsigned, so SmartScreen will warn on first run.
+Builds are self-contained, so no .NET or Windows App SDK runtime is needed. Extract the whole `RoundedTB` folder and run `RoundedTB.exe`. The binary is unsigned, so SmartScreen will warn on first run. Releases that include an `.msix` can be installed instead.
 
 The RoundedTB on the Microsoft Store is the [original project](https://github.com/RoundedTB/RoundedTB), not this fork.
 
@@ -21,10 +21,11 @@ The RoundedTB on the Microsoft Store is the [original project](https://github.co
 
 - **Works on current Insider builds.** Dynamic mode masks the Start and Search buttons correctly again after the taskbar's layout changes.
 - **Redraws on display changes.** Changing resolution, scaling or the work area rebuilds the taskbar mask instead of leaving it stale.
+- **WinUI 3 settings flyout** that opens from the tray icon above the taskbar, with acrylic and a compositor slide animation.
 - **Native ARM64 builds** alongside x64.
 - Plus the stability fixes from [Gniang's fork](https://github.com/Gniang/RoundedTB): .NET 10, a self-healing background worker, atomic settings saves and migration of old configs.
 
-Settings live in `%LOCALAPPDATA%\RoundedTB\rtb.json`.
+Settings live in `%LOCALAPPDATA%\RoundedTB\rtb.json`. The MSIX package keeps its own copy in its app data, seeded from that file on first run.
 
 ## Known issues
 
@@ -40,19 +41,25 @@ If anything breaks badly, press <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>Esc</kbd>,
 
 ## Building
 
-Requires the .NET 10 SDK.
+Requires the .NET 10 SDK. Pick the platform (`x64` or `ARM64`):
 
 ```
-dotnet build RoundedTB/RoundedTB.csproj -c Release
+dotnet build RoundedTB/RoundedTB.csproj -c Release -p:Platform=ARM64
 ```
 
-To produce a release-style build for one architecture:
+Release-style unpackaged build:
 
 ```
-dotnet publish RoundedTB/RoundedTB.csproj -c Release -r win-arm64 --self-contained true -p:PublishSingleFile=true -p:EnableCompressionInSingleFile=true
+dotnet publish RoundedTB/RoundedTB.csproj -c Release -r win-arm64 -p:Platform=ARM64 -p:PublishTrimmed=true
 ```
 
-Releases are built by GitHub Actions: pushing a `v*` tag publishes a release with x64 and ARM64 zips, and a `canary*` tag publishes a pre-release.
+MSIX package (unsigned; sign it, or register the unpacked layout in Developer Mode, to install it):
+
+```
+dotnet publish RoundedTB/RoundedTB.csproj -c Release -r win-arm64 -p:Platform=ARM64 -p:PublishTrimmed=true -p:WindowsPackageType=MSIX -p:GenerateAppxPackageOnBuild=true -p:AppxPackageSigningEnabled=false
+```
+
+Releases are built by GitHub Actions: pushing a `v*` tag publishes a release with x64 and ARM64 zips, and a `canary*` tag publishes a pre-release. MSIX packages are added when the `MSIX_CERTIFICATE` (base64 `.pfx`) and `MSIX_CERTIFICATE_PASSWORD` secrets are set; the certificate subject must match the `Publisher` in `RoundedTB/Package.appxmanifest`.
 
 ## Credits
 

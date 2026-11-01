@@ -4,7 +4,6 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
-using System.Windows;
 using System.Threading;
 using System.Drawing;
 using System.Runtime.InteropServices;
@@ -13,18 +12,11 @@ namespace RoundedTB
 {
     public class Interaction
     {
-        public MainWindow mw;
+        public AppHost mw;
 
         public Interaction()
         {
-            try
-            {
-                mw = (MainWindow)Application.Current.MainWindow;
-            }
-            catch (Exception)
-            {
-                // No idea why this was necessary but it was so it's here now. Yay. TODO - work out why this is suddenly broken and unbreak it
-            }
+            mw = AppHost.Instance;
         }
 
         /// <summary>
@@ -406,11 +398,6 @@ namespace RoundedTB
             return IntPtr.Zero;
         }
 
-        public static bool IsAutoHideEnabled()
-        {
-            return Math.Abs(SystemParameters.PrimaryScreenHeight - SystemParameters.WorkArea.Height) > 0;
-        }
-
         public bool IsTaskbarVisibleOnMonitor(LocalPInvoke.RECT tbRectP, LocalPInvoke.RECT monitorRectP)
         {
             Rectangle tbRect = new Rectangle(tbRectP.Left + 3, tbRectP.Top + 3, tbRectP.Right - tbRectP.Left - 3, tbRectP.Bottom - tbRectP.Top - 3);
@@ -455,7 +442,7 @@ namespace RoundedTB
         public void RefreshUiTray(bool isForceReset)
         {
             // When the taskbar changes, there may be not show tray icons. so need for a redraw.
-            mw.Dispatcher.Invoke(() =>
+            mw.Dispatcher.TryEnqueue(() =>
             {
                 try
                 {
