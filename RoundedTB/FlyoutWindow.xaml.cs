@@ -13,6 +13,7 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Controls.Primitives;
 using Microsoft.UI.Xaml.Hosting;
+using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
 using Microsoft.Win32;
 using Windows.Graphics;
@@ -21,34 +22,48 @@ using WinRT.Interop;
 
 namespace RoundedTB
 {
+    /// <summary>
+    /// The settings flyout. While open, this window keeps a fixed size (the height available beside
+    /// the taskbar) and is clear apart from the card, so every height change and page transition is a
+    /// composition animation inside it. The acrylic lives in <see cref="BackdropWindow"/> behind the
+    /// card; while anything moves, the card is filled with a near-opaque tint instead and the
+    /// backdrop catches up once it settles.
+    /// </summary>
     public sealed partial class FlyoutWindow : Window
     {
-        private const double PanelWidth = 360;
+        private const float CardWidth = 360;
+        private const float CornerRadius = 8;
+        private const float ShapeMargin = 4000;
         private const int DefaultRadiusMax = 32, DefaultMarginMax = 20;
         private static readonly TimeSpan OpenDuration = TimeSpan.FromMilliseconds(250);
         private static readonly TimeSpan CloseDuration = TimeSpan.FromMilliseconds(150);
+        private static readonly TimeSpan MorphDuration = TimeSpan.FromMilliseconds(220);
 
-        private enum RevealEdge { Bottom, Top, Left, Right }
+        private enum Edge { Bottom, Top, Left, Right }
 
         private readonly AppHost host;
         private readonly IntPtr hwnd;
         private readonly Compositor compositor;
-        private readonly Visual panelVisual;
-        private readonly TintedAcrylicBackdrop acrylic;
-        private readonly TransparentBackdrop clear = new();
+        private readonly Visual cardVisual;
+        private readonly InsetClip bodyClip;
+        private readonly CompositionRoundedRectangleGeometry cardGeometry;
+        private readonly CompositionSpriteShape cardShape;
+        private readonly BackdropWindow backdrop;
         private readonly DispatcherQueueTimer applyTimer;
-        private readonly Native.SubclassProc noFrameProc;
 
         // Sliders coerce and fire ValueChanged while the XAML loads, before the fields are set.
         private bool loading = true;
         private bool isOpen;
         private bool closing;
         private bool sliding;
-        private bool resizeQueued;
+        private bool light;
+        private int motions;
+        private readonly DispatcherQueueTimer settleTimer;
         private DateTime lastHidden = DateTime.MinValue;
-        private RevealEdge revealEdge = RevealEdge.Bottom;
-        private Vector3 hiddenTranslation;
+        private Edge edge = Edge.Bottom;
         private IntPtr targetMonitor;
+        private RectInt32 windowBounds;
+        private double scale = 1;
 
         private Types.Settings Settings => host.activeSettings;
 
@@ -56,41 +71,40 @@ namespace RoundedTB
         {
             this.host = host;
             InitializeComponent();
-            hwnd = WindowNative.GetWindowHandle(this);
-
-            OverlappedPresenter presenter = OverlappedPresenter.Create();
-            presenter.SetBorderAndTitleBar(false, false);
-            presenter.IsResizable = false;
-            presenter.IsMaximizable = false;
-            presenter.IsMinimizable = false;
-            presenter.IsAlwaysOnTop = true;
-            AppWindow.SetPresenter(presenter);
-            AppWindow.IsShownInSwitchers = false;
-            long ex = Native.GetWindowLongPtr(hwnd, Native.GWL_EXSTYLE);
-            Native.SetWindowLongPtr(hwnd, Native.GWL_EXSTYLE, (ex | Native.WS_EX_TOOLWINDOW) & ~Native.WS_EX_APPWINDOW);
-
-            // The presenter re-adds WS_DLGFRAME on every show, leaving a 3px frame that DWM paints
-            // white. Claim the whole window as client area instead of fighting over styles.
-            noFrameProc = NoFrameSubclassProc;
-            Native.SetWindowSubclass(hwnd, noFrameProc, 1, IntPtr.Zero);
-            // Without this the clear parts of the window render black.
-            Native.DwmExtendFrameIntoClientArea(hwnd, new Native.MARGINS { Left = -1, Right = -1, Top = -1, Bottom = -1 });
-            ApplyDwmAttributes();
+            hwnd = PopupChrome.Apply(this, clickThrough: false);
+            // A tall clear window: no rounding, and no DWM shadow around its whole rect.
+            PopupChrome.SetAttribute(hwnd, Native.DWMWA_WINDOW_CORNER_PREFERENCE, Native.DWMWCP_DONOTROUND);
+            PopupChrome.SetAttribute(hwnd, Native.DWMWA_NCRENDERING_POLICY, Native.DWMNCRP_DISABLED);
+            SystemBackdrop = new TransparentBackdrop();
 
             compositor = ElementCompositionPreview.GetElementVisual(Root).Compositor;
             ElementCompositionPreview.GetElementVisual(Root).Clip = compositor.CreateInsetClip();
-            ElementCompositionPreview.SetIsTranslationEnabled(Panel, true);
-            panelVisual = ElementCompositionPreview.GetElementVisual(Panel);
+            foreach (UIElement element in new UIElement[] { Card, Body, Footer, SettingsPage, AboutPage })
+            {
+                ElementCompositionPreview.SetIsTranslationEnabled(element, true);
+            }
+            cardVisual = ElementCompositionPreview.GetElementVisual(Card);
+            bodyClip = compositor.CreateInsetClip();
+            ElementCompositionPreview.GetElementVisual(Body).Clip = bodyClip;
+
+            // The card's fill and outline. Drawn in a visual much taller than the card so the shape can
+            // extend past the card's layout bounds while a height change animates.
+            cardGeometry = compositor.CreateRoundedRectangleGeometry();
+            cardGeometry.CornerRadius = new Vector2(CornerRadius, CornerRadius);
+            cardShape = compositor.CreateSpriteShape(cardGeometry);
+            cardShape.StrokeThickness = 1;
+            ShapeVisual shapes = compositor.CreateShapeVisual();
+            shapes.Shapes.Add(cardShape);
+            shapes.Offset = new Vector3(0, -ShapeMargin, 0);
+            shapes.Size = new Vector2(CardWidth, 2 * ShapeMargin);
+            ElementCompositionPreview.SetElementChildVisual(ShapeHost, shapes);
+            Card.HeightChanging += Card_HeightChanging;
 
             if (DesktopAcrylicController.IsSupported())
             {
-                acrylic = new TintedAcrylicBackdrop();
-                SystemBackdrop = acrylic;
+                backdrop = new BackdropWindow();
             }
             ApplyTheme();
-
-            SettingsStack.SizeChanged += (_, _) => FollowContentSize();
-            AboutStack.SizeChanged += (_, _) => FollowContentSize();
 
             Activated += OnActivated;
             AppWindow.Closing += (_, e) =>
@@ -114,19 +128,15 @@ namespace RoundedTB
             applyTimer.IsRepeating = false;
             applyTimer.Tick += (_, _) => host.ApplySettings();
 
+            settleTimer = DispatcherQueue.CreateTimer();
+            settleTimer.Interval = TimeSpan.FromMilliseconds(150);
+            settleTimer.IsRepeating = false;
+            settleTimer.Tick += (_, _) => SetFill();
+
             loading = false;
         }
 
-        private static IntPtr NoFrameSubclassProc(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam, nuint id, IntPtr refData)
-        {
-            if (msg == Native.WM_NCCALCSIZE && wParam != IntPtr.Zero)
-            {
-                return IntPtr.Zero;
-            }
-            return Native.DefSubclassProc(hWnd, msg, wParam, lParam);
-        }
-
-        #region Theme and backdrop
+        #region Theme and card shape
 
         // RTB_THEME=light|dark overrides the shell theme, for testing.
         private static bool SystemUsesLightTheme() =>
@@ -134,54 +144,83 @@ namespace RoundedTB
                 ? Environment.GetEnvironmentVariable("RTB_THEME") == "light"
                 : Registry.GetValue(@"HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize", "SystemUsesLightTheme", 0) is int v && v == 1;
 
-        private void SetCloaked(bool cloaked)
-        {
-            int value = cloaked ? 1 : 0;
-            Native.DwmSetWindowAttribute(hwnd, Native.DWMWA_CLOAK, ref value, sizeof(int));
-        }
-
-        private void ApplyDwmAttributes()
-        {
-            int corner = Native.DWMWCP_ROUND;
-            Native.DwmSetWindowAttribute(hwnd, Native.DWMWA_WINDOW_CORNER_PREFERENCE, ref corner, sizeof(int));
-            int border = Native.DWMWA_COLOR_NONE;
-            Native.DwmSetWindowAttribute(hwnd, Native.DWMWA_BORDER_COLOR, ref border, sizeof(int));
-        }
-
         /// <summary>Follows the shell theme (SystemUsesLightTheme), like the taskbar, not the app theme.</summary>
         private void ApplyTheme()
         {
-            bool light = SystemUsesLightTheme();
+            light = SystemUsesLightTheme();
             Root.RequestedTheme = light ? ElementTheme.Light : ElementTheme.Dark;
-            acrylic?.SetTheme(light);
-            UpdatePanelBackground();
+            backdrop?.SetTheme(light);
+            cardShape.StrokeBrush = compositor.CreateColorBrush(light ? Color.FromArgb(0x1A, 0, 0, 0) : Color.FromArgb(0x26, 0xFF, 0xFF, 0xFF));
+            SetFill();
         }
 
         /// <summary>
-        /// Window-level acrylic covers the whole window at once instead of moving with the panel, so
-        /// it is swapped for a near-opaque tint while the panel slides.
+        /// A strong tint over the acrylic, like the shell flyouts, made near-opaque while the card moves:
+        /// the acrylic window only catches up afterwards (and draws nothing for a moment while it
+        /// resizes). The fill changes in the same composition frame as the motion, so it is never late.
         /// </summary>
-        private void UpdatePanelBackground()
+        private void SetFill()
         {
-            byte shade = Root.RequestedTheme == ElementTheme.Light ? (byte)0xEE : (byte)0x1C;
-            if (acrylic == null)
+            byte alpha = backdrop == null ? (byte)0xFF : motions > 0 ? (byte)0xF7 : (byte)0xD9;
+            cardShape.FillBrush = compositor.CreateColorBrush(Tint(alpha));
+        }
+
+        private void BeginMotion()
+        {
+            if (motions++ == 0)
             {
-                Panel.Background = new SolidColorBrush(Color.FromArgb(0xFF, shade, shade, shade));
-            }
-            else
-            {
-                Panel.Background = sliding ? new SolidColorBrush(Color.FromArgb(0xF7, shade, shade, shade)) : null;
+                settleTimer.Stop();
+                SetFill();
             }
         }
 
-        private void SetSliding(bool value)
+        private void EndMotion()
         {
-            sliding = value;
-            if (acrylic != null)
+            if (--motions > 0)
             {
-                SystemBackdrop = value ? clear : acrylic;
+                return;
             }
-            UpdatePanelBackground();
+            RevealBackdrop(Card.ActualHeight);
+            settleTimer.Start();
+        }
+
+        private Color Tint(byte alpha)
+        {
+            byte shade = light ? (byte)0xEE : (byte)0x1C;
+            return Color.FromArgb(alpha, shade, shade, shade);
+        }
+
+        /// <summary>Sets the card shape relative to the card's own layout box.</summary>
+        private void SetShape(float top, float height)
+        {
+            cardGeometry.Offset = new Vector2(0.5f, ShapeMargin + top + 0.5f);
+            cardGeometry.Size = new Vector2(CardWidth - 1, Math.Max(0, height - 1));
+        }
+
+        /// <summary>Puts the acrylic behind a card of <paramref name="height"/> (DIPs), anchored to the taskbar side.</summary>
+        private void RevealBackdrop(double height)
+        {
+            if (backdrop == null || !isOpen || closing)
+            {
+                return;
+            }
+            int h = (int)Math.Round(height * scale);
+            int y = edge == Edge.Top ? windowBounds.Y : windowBounds.Y + windowBounds.Height - h;
+            backdrop.Reveal(new RectInt32(windowBounds.X, y, windowBounds.Width, h), hwnd);
+        }
+
+        private void AfterFrames(int frames, Action action)
+        {
+            void OnRendering(object sender, object e)
+            {
+                if (--frames > 0)
+                {
+                    return;
+                }
+                CompositionTarget.Rendering -= OnRendering;
+                action();
+            }
+            CompositionTarget.Rendering += OnRendering;
         }
 
         #endregion
@@ -205,18 +244,18 @@ namespace RoundedTB
 
         public void ShowFlyout(bool helpPage)
         {
-            // The XAML tree can't be measured until the window has been shown once, so the first
+            // The XAML tree can't be laid out until the window has been shown once, so the first
             // open shows it cloaked and carries on when it has loaded.
             if (!Root.IsLoaded)
             {
-                SetCloaked(true);
+                PopupChrome.SetCloaked(hwnd, true);
                 Root.Loaded += OnFirstLoad;
                 AppWindow.Show(false);
                 void OnFirstLoad(object sender, RoutedEventArgs e)
                 {
                     Root.Loaded -= OnFirstLoad;
                     AppWindow.Hide();
-                    SetCloaked(false);
+                    PopupChrome.SetCloaked(hwnd, false);
                     ShowFlyout(helpPage);
                 }
                 return;
@@ -237,32 +276,29 @@ namespace RoundedTB
             ApplyTheme();
             Native.GetCursorPos(out Native.POINT cursor);
             targetMonitor = Native.MonitorFromPoint(cursor, Native.MONITOR_DEFAULTTONEAREST);
-            Place();
+            PlaceWindow();
 
-            panelVisual.StopAnimation("Translation");
-            panelVisual.Properties.InsertVector3("Translation", hiddenTranslation);
-            SetSliding(true);
+            // Park the card fully outside the window until the first frame, when its size is known.
+            float park = (float)(windowBounds.Height / scale + windowBounds.Width / scale);
+            cardVisual.StopAnimation("Translation");
+            cardVisual.Properties.InsertVector3("Translation", HiddenOffset(park));
             isOpen = true;
             closing = false;
+            sliding = true;
+            BeginMotion();
             AppWindow.Show(true);
-            ApplyDwmAttributes();
             Activate();
             Native.SetForegroundWindow(hwnd);
 
-            // Start on the first rendered frame, so a cold open doesn't lose half the slide.
-            void OnFirstFrame(object sender, object e)
+            AfterFrames(1, () =>
             {
-                CompositionTarget.Rendering -= OnFirstFrame;
+                SetShape(0, (float)Card.ActualHeight);
                 Slide(opening: true, () =>
                 {
-                    if (isOpen && !closing)
-                    {
-                        SetSliding(false);
-                        Place();
-                    }
+                    sliding = false;
+                    EndMotion();
                 });
-            }
-            CompositionTarget.Rendering += OnFirstFrame;
+            });
         }
 
         public void HideFlyout()
@@ -272,11 +308,18 @@ namespace RoundedTB
                 return;
             }
             closing = true;
+            sliding = true;
             FlushPendingChanges();
-            SetSliding(true);
+            BeginMotion();
+            backdrop?.Conceal();
             Slide(opening: false, () =>
             {
                 AppWindow.Hide();
+                backdrop?.HideWindow();
+                sliding = false;
+                motions = 0;
+                settleTimer.Stop();
+                SetFill();
                 isOpen = false;
                 closing = false;
                 lastHidden = DateTime.UtcNow;
@@ -292,99 +335,136 @@ namespace RoundedTB
             }
         }
 
+        /// <summary>The window is larger than the card; clicks on the clear part dismiss it.</summary>
+        private void Root_PointerPressed(object sender, PointerRoutedEventArgs e)
+        {
+            if (ReferenceEquals(e.OriginalSource, Root))
+            {
+                HideFlyout();
+            }
+        }
+
+        private Vector3 HiddenOffset(float distance) => edge switch
+        {
+            Edge.Top => new Vector3(0, -distance, 0),
+            Edge.Left => new Vector3(-distance, 0, 0),
+            Edge.Right => new Vector3(distance, 0, 0),
+            _ => new Vector3(0, distance, 0),
+        };
+
         private void Slide(bool opening, Action completed)
         {
+            float distance = edge is Edge.Left or Edge.Right ? CardWidth + 2 : (float)Card.ActualHeight + 2;
             CubicBezierEasingFunction easing = opening
                 ? compositor.CreateCubicBezierEasingFunction(new Vector2(0f, 0f), new Vector2(0f, 1f))
                 : compositor.CreateCubicBezierEasingFunction(new Vector2(0.7f, 0f), new Vector2(1f, 0.5f));
             Vector3KeyFrameAnimation animation = compositor.CreateVector3KeyFrameAnimation();
-            animation.InsertKeyFrame(0f, opening ? hiddenTranslation : Vector3.Zero);
-            animation.InsertKeyFrame(1f, opening ? Vector3.Zero : hiddenTranslation, easing);
+            animation.InsertKeyFrame(0f, opening ? HiddenOffset(distance) : Vector3.Zero);
+            animation.InsertKeyFrame(1f, opening ? Vector3.Zero : HiddenOffset(distance), easing);
             animation.Duration = opening ? OpenDuration : CloseDuration;
+            Animate(cardVisual, "Translation", animation, completed);
+        }
 
+        private void Animate(CompositionObject target, string property, CompositionAnimation animation, Action completed)
+        {
             CompositionScopedBatch batch = compositor.CreateScopedBatch(CompositionBatchTypes.Animation);
-            panelVisual.StartAnimation("Translation", animation);
+            target.StartAnimation(property, animation);
             batch.End();
             batch.Completed += (_, _) => completed();
         }
 
-        private void FollowContentSize()
+        /// <summary>
+        /// Raised from the card's arrange pass, so animations started here begin in the same frame as the new size:
+        /// the card shape morphs from the old box to the new one, and the content on the taskbar's far
+        /// side is pushed back to where it was and eased into place.
+        /// </summary>
+        private void Card_HeightChanging(float from, float to)
         {
-            if (!isOpen || sliding || resizeQueued)
+            if (!isOpen || sliding || from <= 0)
             {
+                SetShape(0, to);
                 return;
             }
-            // Several SizeChanged events arrive per layout change; handle them once.
-            resizeQueued = true;
-            DispatcherQueue.TryEnqueue(DispatcherQueuePriority.Low, () =>
+
+            float delta = to - from;
+            bool anchoredBottom = edge != Edge.Top;
+            Visual moving = ElementCompositionPreview.GetElementVisual(anchoredBottom ? Body : Footer);
+            moving.Properties.InsertVector3("Translation", new Vector3(0, anchoredBottom ? delta : -delta, 0));
+            SetShape(anchoredBottom ? delta : 0, from);
+            // The acrylic never sticks out of the card: when shrinking it goes to the final size now,
+            // when growing it stays inside the card and catches up at the end.
+            if (delta < 0)
             {
-                resizeQueued = false;
-                if (isOpen && !closing && !sliding)
-                {
-                    Place();
-                }
-            });
+                RevealBackdrop(to);
+            }
+            BeginMotion();
+
+            CubicBezierEasingFunction easing = compositor.CreateCubicBezierEasingFunction(new Vector2(0.1f, 0.9f), new Vector2(0.2f, 1f));
+            Vector3KeyFrameAnimation settle = compositor.CreateVector3KeyFrameAnimation();
+            settle.InsertKeyFrame(1f, Vector3.Zero, easing);
+            settle.Duration = MorphDuration;
+            Vector2KeyFrameAnimation offset = compositor.CreateVector2KeyFrameAnimation();
+            offset.InsertKeyFrame(1f, new Vector2(0.5f, ShapeMargin + 0.5f), easing);
+            offset.Duration = MorphDuration;
+            Vector2KeyFrameAnimation size = compositor.CreateVector2KeyFrameAnimation();
+            size.InsertKeyFrame(1f, new Vector2(CardWidth - 1, to - 1), easing);
+            size.Duration = MorphDuration;
+
+            cardGeometry.StartAnimation("Offset", offset);
+            cardGeometry.StartAnimation("Size", size);
+            if (delta > 0)
+            {
+                // Content pushed back over the footer would show through it.
+                bodyClip.BottomInset = delta;
+                ScalarKeyFrameAnimation unclip = compositor.CreateScalarKeyFrameAnimation();
+                unclip.InsertKeyFrame(1f, 0f, easing);
+                unclip.Duration = MorphDuration;
+                bodyClip.StartAnimation("BottomInset", unclip);
+            }
+            Animate(moving, "Translation", settle, EndMotion);
         }
 
         /// <summary>
-        /// Sizes the window to the panel (capped to what fits beside the taskbar) and places it 12px
-        /// from the screen edge and the taskbar, in the target monitor's physical pixels.
+        /// Gives the window the full height available beside the taskbar on the target monitor, 12px
+        /// from the screen edge and the taskbar, and anchors the card to the taskbar side.
         /// </summary>
-        private void Place()
-        {
-            RectInt32 bounds = ComputeBounds(out double scale);
-            AppWindow.MoveAndResize(bounds);
-
-            // Translation is in DIPs; travel the full size so the panel starts behind the edge.
-            float travelY = (float)(bounds.Height / scale) + 2;
-            float travelX = (float)PanelWidth + 2;
-            hiddenTranslation = revealEdge switch
-            {
-                RevealEdge.Top => new Vector3(0, -travelY, 0),
-                RevealEdge.Left => new Vector3(-travelX, 0, 0),
-                RevealEdge.Right => new Vector3(travelX, 0, 0),
-                _ => new Vector3(0, travelY, 0),
-            };
-        }
-
-        private RectInt32 ComputeBounds(out double scale)
+        private void PlaceWindow()
         {
             Native.GetMonitor(targetMonitor, out Native.RECT mon, out Native.RECT work, out scale);
             Native.RECT tb = Native.FindTaskbarRect(targetMonitor, mon, work);
 
             int gap = (int)Math.Round(12 * scale);
+            int width = (int)Math.Ceiling(CardWidth * scale);
             bool horizontal = tb.Right - tb.Left >= tb.Bottom - tb.Top;
-            int available = mon.Bottom - mon.Top - 2 * gap - (horizontal ? tb.Bottom - tb.Top : 0);
-
-            Panel.MaxHeight = available / scale;
-            Panel.Measure(new Windows.Foundation.Size(PanelWidth, double.PositiveInfinity));
-            double desired = Panel.DesiredSize.Height > 0 ? Panel.DesiredSize.Height : 600;
-            int width = (int)Math.Ceiling(PanelWidth * scale);
-            int height = Math.Min(available, (int)Math.Ceiling(desired * scale));
-
             int x = mon.Right - gap - width;
-            int y = mon.Bottom - gap - height;
-            revealEdge = RevealEdge.Bottom;
+            int top = mon.Top + gap;
+            int bottom = mon.Bottom - gap;
+            edge = Edge.Bottom;
             if (horizontal && tb.Top >= (mon.Top + mon.Bottom) / 2)
             {
-                y = tb.Top - gap - height;
+                bottom = tb.Top - gap;
             }
             else if (horizontal)
             {
-                revealEdge = RevealEdge.Top;
-                y = tb.Bottom + gap;
+                edge = Edge.Top;
+                top = tb.Bottom + gap;
             }
             else if (tb.Left >= (mon.Left + mon.Right) / 2)
             {
-                revealEdge = RevealEdge.Right;
+                edge = Edge.Right;
                 x = tb.Left - gap - width;
             }
             else
             {
-                revealEdge = RevealEdge.Left;
+                edge = Edge.Left;
                 x = tb.Right + gap;
             }
-            return new RectInt32(x, y, width, height);
+
+            windowBounds = new RectInt32(x, top, width, bottom - top);
+            AppWindow.MoveAndResize(windowBounds);
+            Card.VerticalAlignment = edge == Edge.Top ? VerticalAlignment.Top : VerticalAlignment.Bottom;
+            Footer.Measure(new Windows.Foundation.Size(CardWidth, double.PositiveInfinity));
+            Body.MaxHeight = Math.Max(200, windowBounds.Height / scale - Footer.DesiredSize.Height);
         }
 
         #endregion
@@ -764,10 +844,25 @@ namespace RoundedTB
             }
             SettingsPage.Visibility = show ? Visibility.Collapsed : Visibility.Visible;
             AboutPage.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
-            FadeIn(show ? AboutPage : SettingsPage);
-            FollowContentSize();
+            if (isOpen)
+            {
+                EnterPage(show ? AboutPage : SettingsPage, forward: show);
+            }
             HelpButtonIcon.Glyph = show ? "" : "";
             HelpButtonText.Text = show ? "Back" : "Help & about";
+        }
+
+        /// <summary>Slides a page in from the right (forward) or left (back) while it fades in.</summary>
+        private void EnterPage(UIElement page, bool forward)
+        {
+            Visual visual = ElementCompositionPreview.GetElementVisual(page);
+            CubicBezierEasingFunction easing = compositor.CreateCubicBezierEasingFunction(new Vector2(0.1f, 0.9f), new Vector2(0.2f, 1f));
+            Vector3KeyFrameAnimation slide = compositor.CreateVector3KeyFrameAnimation();
+            slide.InsertKeyFrame(0f, new Vector3(forward ? 60 : -60, 0, 0));
+            slide.InsertKeyFrame(1f, Vector3.Zero, easing);
+            slide.Duration = TimeSpan.FromMilliseconds(260);
+            visual.StartAnimation("Translation", slide);
+            FadeIn(page);
         }
 
         private void FadeIn(UIElement element)
@@ -789,7 +884,6 @@ namespace RoundedTB
             HelpTabPanel.Visibility = AboutTabs.SelectedIndex == 1 ? Visibility.Visible : Visibility.Collapsed;
             LinksTabPanel.Visibility = AboutTabs.SelectedIndex == 2 ? Visibility.Visible : Visibility.Collapsed;
             FadeIn(AboutTabs.SelectedIndex switch { 1 => HelpTabPanel, 2 => LinksTabPanel, _ => AboutTabPanel });
-            FollowContentSize();
         }
 
         private void PopulateAbout()
@@ -860,8 +954,8 @@ namespace RoundedTB
             Color tint = light ? Color.FromArgb(0xFF, 0xEE, 0xEE, 0xEE) : Color.FromArgb(0xFF, 0x1C, 0x1C, 0x1C);
             controller.Kind = DesktopAcrylicKind.Base;
             controller.TintColor = tint;
-            controller.TintOpacity = 0.6f;
-            controller.LuminosityOpacity = 0.85f;
+            controller.TintOpacity = 0.3f;
+            controller.LuminosityOpacity = 0.6f;
             controller.FallbackColor = tint;
         }
 

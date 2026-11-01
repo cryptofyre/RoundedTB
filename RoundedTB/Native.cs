@@ -83,8 +83,10 @@ namespace RoundedTB
         public const uint MONITOR_DEFAULTTONEAREST = 2;
         public const uint MOD_WIN = 0x8, VK_F2 = 0x71;
         public const int GWL_EXSTYLE = -20;
-        public const long WS_EX_TOOLWINDOW = 0x80, WS_EX_APPWINDOW = 0x40000;
-        public const int DWMWA_WINDOW_CORNER_PREFERENCE = 33, DWMWCP_ROUND = 2;
+        public const long WS_EX_TRANSPARENT = 0x20, WS_EX_TOOLWINDOW = 0x80, WS_EX_APPWINDOW = 0x40000, WS_EX_NOACTIVATE = 0x08000000;
+        public const uint SWP_NOSIZE = 0x1, SWP_NOMOVE = 0x2, SWP_NOACTIVATE = 0x10;
+        public const int DWMWA_NCRENDERING_POLICY = 2, DWMNCRP_DISABLED = 1;
+        public const int DWMWA_WINDOW_CORNER_PREFERENCE = 33, DWMWCP_DONOTROUND = 1, DWMWCP_ROUND = 2;
         public const int DWMWA_CLOAK = 13;
         public const int DWMWA_BORDER_COLOR = 34, DWMWA_COLOR_NONE = unchecked((int)0xFFFFFFFE);
         private const int APPMODEL_ERROR_NO_PACKAGE = 15700;
@@ -187,6 +189,10 @@ namespace RoundedTB
 
         [LibraryImport("user32.dll", EntryPoint = "SetWindowLongPtrW")]
         public static partial long SetWindowLongPtr(IntPtr hWnd, int index, long value);
+
+        [LibraryImport("user32.dll")]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        public static partial bool SetWindowPos(IntPtr hWnd, IntPtr insertAfter, int x, int y, int width, int height, uint flags);
 
         [LibraryImport("dwmapi.dll")]
         public static partial int DwmSetWindowAttribute(IntPtr hWnd, int attribute, ref int value, int size);

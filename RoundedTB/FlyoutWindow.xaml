@@ -4,9 +4,10 @@
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:toolkit="using:CommunityToolkit.WinUI.Controls"
+    xmlns:local="using:RoundedTB"
     Title="RoundedTB">
 
-    <Grid x:Name="Root" Background="Transparent">
+    <Grid x:Name="Root" Background="Transparent" PointerPressed="Root_PointerPressed">
         <Grid.Resources>
             <ResourceDictionary>
                 <ResourceDictionary.ThemeDictionaries>
@@ -110,157 +111,58 @@
             </ResourceDictionary>
         </Grid.Resources>
 
-        <Grid x:Name="Panel"
-              CornerRadius="{StaticResource OverlayCornerRadius}"
-              BorderBrush="{ThemeResource SurfaceStrokeColorFlyoutBrush}" BorderThickness="1">
+        <!-- The window stays a fixed height while open; the card inside it carries the content, and its
+             background and outline are a composition shape so height changes can animate. -->
+        <local:CardPanel x:Name="Card" VerticalAlignment="Bottom" Background="Transparent">
             <Grid.RowDefinitions>
-                <RowDefinition Height="*" />
+                <RowDefinition Height="Auto" />
                 <RowDefinition Height="Auto" />
             </Grid.RowDefinitions>
 
-            <!-- Settings -->
-            <ScrollViewer x:Name="SettingsPage" HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
-                <StackPanel x:Name="SettingsStack" Padding="16,14,16,16" VerticalAlignment="Top">
-                    <Grid>
-                        <ContentControl Style="{StaticResource Logo}" Width="36" Height="36" HorizontalAlignment="Left" VerticalAlignment="Center"
-                                        ToolTipService.ToolTip="RoundedTB" />
-                        <toolkit:Segmented x:Name="ModeSegmented" HorizontalAlignment="Right" SelectionChanged="Mode_SelectionChanged">
-                            <toolkit:SegmentedItem Content="Basic">
-                                <toolkit:SegmentedItem.Icon>
-                                    <FontIcon Glyph="&#xE75B;" />
-                                </toolkit:SegmentedItem.Icon>
-                            </toolkit:SegmentedItem>
-                            <toolkit:SegmentedItem Content="Dynamic">
-                                <toolkit:SegmentedItem.Icon>
-                                    <FontIcon Glyph="&#xF246;" />
-                                </toolkit:SegmentedItem.Icon>
-                            </toolkit:SegmentedItem>
-                        </toolkit:Segmented>
-                    </Grid>
+            <Border x:Name="ShapeHost" Grid.RowSpan="2" />
 
-                    <StackPanel Style="{StaticResource SectionHeaderPanel}">
-                        <FontIcon Style="{StaticResource SectionIcon}" Glyph="&#xEB3C;" />
-                        <TextBlock Style="{StaticResource Strong}" Text="Shape" />
-                    </StackPanel>
-                    <Border Style="{StaticResource Card}">
-                        <StackPanel>
-                            <Grid>
-                                <TextBlock Text="Corner radius" VerticalAlignment="Center" />
-                                <TextBlock x:Name="RadiusValue" Style="{StaticResource Value}" />
-                            </Grid>
-                            <Slider x:Name="RadiusSlider" Minimum="0" Maximum="32" ValueChanged="MainShape_ValueChanged" />
+            <Grid x:Name="Body">
+                <!-- Settings -->
+                <ScrollViewer x:Name="SettingsPage" HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
+                    <StackPanel x:Name="SettingsStack" Padding="16,14,16,16" VerticalAlignment="Top">
+                        <Grid>
+                            <ContentControl Style="{StaticResource Logo}" Width="36" Height="36" HorizontalAlignment="Left" VerticalAlignment="Center"
+                                            ToolTipService.ToolTip="RoundedTB" />
+                            <toolkit:Segmented x:Name="ModeSegmented" HorizontalAlignment="Right" SelectionChanged="Mode_SelectionChanged">
+                                <toolkit:SegmentedItem Content="Basic">
+                                    <toolkit:SegmentedItem.Icon>
+                                        <FontIcon Glyph="&#xE75B;" />
+                                    </toolkit:SegmentedItem.Icon>
+                                </toolkit:SegmentedItem>
+                                <toolkit:SegmentedItem Content="Dynamic">
+                                    <toolkit:SegmentedItem.Icon>
+                                        <FontIcon Glyph="&#xF246;" />
+                                    </toolkit:SegmentedItem.Icon>
+                                </toolkit:SegmentedItem>
+                            </toolkit:Segmented>
+                        </Grid>
 
-                            <StackPanel x:Name="LinkedMarginPanel">
-                                <Grid Margin="0,6,0,0">
-                                    <TextBlock Text="Margins" VerticalAlignment="Center" />
-                                    <TextBlock x:Name="MarginAllValue" Style="{StaticResource Value}" />
-                                </Grid>
-                                <Slider x:Name="MarginAllSlider" Minimum="0" Maximum="20" ValueChanged="MainShape_ValueChanged" />
-                            </StackPanel>
-
-                            <Grid x:Name="SplitMarginPanel" Visibility="Collapsed" ColumnSpacing="16" Margin="0,6,0,0">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition />
-                                    <ColumnDefinition />
-                                </Grid.ColumnDefinitions>
-                                <Grid.RowDefinitions>
-                                    <RowDefinition />
-                                    <RowDefinition />
-                                </Grid.RowDefinitions>
-                                <Slider x:Name="MarginTopSlider" Header="Top" Minimum="0" Maximum="20" ValueChanged="MainShape_ValueChanged" />
-                                <Slider x:Name="MarginBottomSlider" Grid.Column="1" Header="Bottom" Minimum="0" Maximum="20" ValueChanged="MainShape_ValueChanged" />
-                                <Slider x:Name="MarginLeftSlider" Grid.Row="1" Header="Left" Minimum="0" Maximum="20" ValueChanged="MainShape_ValueChanged" />
-                                <Slider x:Name="MarginRightSlider" Grid.Row="1" Grid.Column="1" Header="Right" Minimum="0" Maximum="20" ValueChanged="MainShape_ValueChanged" />
-                            </Grid>
-
-                            <Grid Style="{StaticResource Row}" Margin="0,4,0,0">
-                                <Grid.ColumnDefinitions><ColumnDefinition /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
-                                <TextBlock Text="Link all sides" VerticalAlignment="Center" />
-                                <ToggleSwitch x:Name="LinkMarginsToggle" Style="{StaticResource RowSwitch}" Toggled="LinkMargins_Toggled" />
-                            </Grid>
-                        </StackPanel>
-                    </Border>
-
-                    <StackPanel x:Name="SegmentsSection">
                         <StackPanel Style="{StaticResource SectionHeaderPanel}">
-                            <FontIcon Style="{StaticResource SectionIcon}" Glyph="&#xE8A9;" />
-                            <TextBlock Style="{StaticResource Strong}" Text="Segments" />
+                            <FontIcon Style="{StaticResource SectionIcon}" Glyph="&#xEB3C;" />
+                            <TextBlock Style="{StaticResource Strong}" Text="Shape" />
                         </StackPanel>
                         <Border Style="{StaticResource Card}">
                             <StackPanel>
-                                <Grid Style="{StaticResource Row}">
-                                    <Grid.ColumnDefinitions><ColumnDefinition /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
-                                    <TextBlock Text="Show system tray" VerticalAlignment="Center" TextWrapping="Wrap" />
-                                    <ToggleSwitch x:Name="ShowTrayToggle" Style="{StaticResource RowSwitch}" Toggled="Toggle_Toggled" />
-                                </Grid>
-                                <Grid Style="{StaticResource Row}">
-                                    <Grid.ColumnDefinitions><ColumnDefinition /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
-                                    <TextBlock Text="Show widgets" VerticalAlignment="Center" TextWrapping="Wrap" />
-                                    <ToggleSwitch x:Name="ShowWidgetsToggle" Style="{StaticResource RowSwitch}" Toggled="Toggle_Toggled" />
-                                </Grid>
-                                <Grid Style="{StaticResource Row}">
-                                    <Grid.ColumnDefinitions><ColumnDefinition /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
-                                    <TextBlock Text="Show clock on other monitors" VerticalAlignment="Center" TextWrapping="Wrap" />
-                                    <ToggleSwitch x:Name="ShowClockToggle" Style="{StaticResource RowSwitch}" Toggled="Toggle_Toggled" />
-                                </Grid>
-                            </StackPanel>
-                        </Border>
-                    </StackPanel>
-
-                    <StackPanel Style="{StaticResource SectionHeaderPanel}">
-                        <FontIcon Style="{StaticResource SectionIcon}" Glyph="&#xE9E9;" />
-                        <TextBlock Style="{StaticResource Strong}" Text="Behaviour" />
-                    </StackPanel>
-                    <Border Style="{StaticResource Card}">
-                        <StackPanel>
-                            <Grid Style="{StaticResource Row}">
-                                <Grid.ColumnDefinitions><ColumnDefinition /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
-                                <TextBlock Text="Fill when a window is maximised" VerticalAlignment="Center" TextWrapping="Wrap" />
-                                <ToggleSwitch x:Name="FillMaximisedToggle" Style="{StaticResource RowSwitch}" Toggled="Toggle_Toggled" />
-                            </Grid>
-                            <Grid Style="{StaticResource Row}" Margin="16,0,0,0">
-                                <Grid.ColumnDefinitions><ColumnDefinition /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
-                                <TextBlock Text="Also fill during Alt+Tab" VerticalAlignment="Center" TextWrapping="Wrap" />
-                                <ToggleSwitch x:Name="FillTaskSwitchToggle" Style="{StaticResource RowSwitch}" Toggled="Toggle_Toggled" />
-                            </Grid>
-                            <Grid Style="{StaticResource Row}">
-                                <Grid.ColumnDefinitions><ColumnDefinition /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
-                                <TextBlock Text="Run at startup" VerticalAlignment="Center" TextWrapping="Wrap" />
-                                <ToggleSwitch x:Name="StartupToggle" Style="{StaticResource RowSwitch}" Toggled="Startup_Toggled" />
-                            </Grid>
-                        </StackPanel>
-                    </Border>
-
-                    <Button x:Name="AdvancedButton" Margin="0,14,0,0" Padding="14,0" MinHeight="40"
-                            HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch"
-                            Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
-                            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
-                            CornerRadius="{StaticResource OverlayCornerRadius}"
-                            Click="Advanced_Click" AutomationProperties.Name="Advanced">
-                        <Grid>
-                            <StackPanel Orientation="Horizontal" Spacing="10">
-                                <FontIcon Style="{StaticResource SectionIcon}" Glyph="&#xE9F5;" />
-                                <TextBlock Text="Advanced" VerticalAlignment="Center" />
-                            </StackPanel>
-                            <FontIcon x:Name="AdvancedChevron" Glyph="&#xE70D;" FontSize="12" HorizontalAlignment="Right" VerticalAlignment="Center" />
-                        </Grid>
-                    </Button>
-                    <Border x:Name="AdvancedPanel" Style="{StaticResource Card}" Margin="0,6,0,0" Padding="14,10,14,12" Visibility="Collapsed">
-                        <StackPanel>
-                            <StackPanel x:Name="SegmentLayoutSection">
-                                <TextBlock Style="{StaticResource Strong}" Text="Per-segment layout (dynamic mode)" Margin="0,0,0,8" />
-                                <toolkit:Segmented x:Name="SegmentSegmented" HorizontalAlignment="Stretch" SelectionChanged="Segment_SelectionChanged">
-                                    <toolkit:SegmentedItem Content="Apps" />
-                                    <toolkit:SegmentedItem Content="Tray" />
-                                    <toolkit:SegmentedItem Content="Widgets" />
-                                    <toolkit:SegmentedItem Content="Clock" />
-                                </toolkit:Segmented>
-                                <Grid Margin="0,10,0,0">
+                                <Grid>
                                     <TextBlock Text="Corner radius" VerticalAlignment="Center" />
-                                    <TextBlock x:Name="SegRadiusValue" Style="{StaticResource Value}" />
+                                    <TextBlock x:Name="RadiusValue" Style="{StaticResource Value}" />
                                 </Grid>
-                                <Slider x:Name="SegRadiusSlider" Minimum="0" Maximum="32" ValueChanged="SegmentShape_ValueChanged" />
-                                <Grid ColumnSpacing="16">
+                                <Slider x:Name="RadiusSlider" Minimum="0" Maximum="32" ValueChanged="MainShape_ValueChanged" />
+
+                                <StackPanel x:Name="LinkedMarginPanel">
+                                    <Grid Margin="0,6,0,0">
+                                        <TextBlock Text="Margins" VerticalAlignment="Center" />
+                                        <TextBlock x:Name="MarginAllValue" Style="{StaticResource Value}" />
+                                    </Grid>
+                                    <Slider x:Name="MarginAllSlider" Minimum="0" Maximum="20" ValueChanged="MainShape_ValueChanged" />
+                                </StackPanel>
+
+                                <Grid x:Name="SplitMarginPanel" Visibility="Collapsed" ColumnSpacing="16" Margin="0,6,0,0">
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition />
                                         <ColumnDefinition />
@@ -269,155 +171,258 @@
                                         <RowDefinition />
                                         <RowDefinition />
                                     </Grid.RowDefinitions>
-                                    <Slider x:Name="SegTopSlider" Header="Top" Minimum="0" Maximum="20" ValueChanged="SegmentShape_ValueChanged" />
-                                    <Slider x:Name="SegBottomSlider" Grid.Column="1" Header="Bottom" Minimum="0" Maximum="20" ValueChanged="SegmentShape_ValueChanged" />
-                                    <Slider x:Name="SegLeftSlider" Grid.Row="1" Header="Left" Minimum="0" Maximum="20" ValueChanged="SegmentShape_ValueChanged" />
-                                    <Slider x:Name="SegRightSlider" Grid.Row="1" Grid.Column="1" Header="Right" Minimum="0" Maximum="20" ValueChanged="SegmentShape_ValueChanged" />
+                                    <Slider x:Name="MarginTopSlider" Header="Top" Minimum="0" Maximum="20" ValueChanged="MainShape_ValueChanged" />
+                                    <Slider x:Name="MarginBottomSlider" Grid.Column="1" Header="Bottom" Minimum="0" Maximum="20" ValueChanged="MainShape_ValueChanged" />
+                                    <Slider x:Name="MarginLeftSlider" Grid.Row="1" Header="Left" Minimum="0" Maximum="20" ValueChanged="MainShape_ValueChanged" />
+                                    <Slider x:Name="MarginRightSlider" Grid.Row="1" Grid.Column="1" Header="Right" Minimum="0" Maximum="20" ValueChanged="MainShape_ValueChanged" />
                                 </Grid>
-                                <StackPanel x:Name="SegWidthPanel">
-                                    <Grid>
-                                        <TextBlock Text="Segment width" VerticalAlignment="Center" />
-                                        <TextBlock x:Name="SegWidthValue" Style="{StaticResource Value}" />
+
+                                <Grid Style="{StaticResource Row}" Margin="0,4,0,0">
+                                    <Grid.ColumnDefinitions><ColumnDefinition /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                                    <TextBlock Text="Link all sides" VerticalAlignment="Center" />
+                                    <ToggleSwitch x:Name="LinkMarginsToggle" Style="{StaticResource RowSwitch}" Toggled="LinkMargins_Toggled" />
+                                </Grid>
+                            </StackPanel>
+                        </Border>
+
+                        <StackPanel x:Name="SegmentsSection">
+                            <StackPanel Style="{StaticResource SectionHeaderPanel}">
+                                <FontIcon Style="{StaticResource SectionIcon}" Glyph="&#xE8A9;" />
+                                <TextBlock Style="{StaticResource Strong}" Text="Segments" />
+                            </StackPanel>
+                            <Border Style="{StaticResource Card}">
+                                <StackPanel>
+                                    <Grid Style="{StaticResource Row}">
+                                        <Grid.ColumnDefinitions><ColumnDefinition /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                                        <TextBlock Text="Show system tray" VerticalAlignment="Center" TextWrapping="Wrap" />
+                                        <ToggleSwitch x:Name="ShowTrayToggle" Style="{StaticResource RowSwitch}" Toggled="Toggle_Toggled" />
                                     </Grid>
-                                    <Slider x:Name="SegWidthSlider" Minimum="40" Maximum="400" LargeChange="10" ValueChanged="SegmentShape_ValueChanged" />
+                                    <Grid Style="{StaticResource Row}">
+                                        <Grid.ColumnDefinitions><ColumnDefinition /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                                        <TextBlock Text="Show widgets" VerticalAlignment="Center" TextWrapping="Wrap" />
+                                        <ToggleSwitch x:Name="ShowWidgetsToggle" Style="{StaticResource RowSwitch}" Toggled="Toggle_Toggled" />
+                                    </Grid>
+                                    <Grid Style="{StaticResource Row}">
+                                        <Grid.ColumnDefinitions><ColumnDefinition /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                                        <TextBlock Text="Show clock on other monitors" VerticalAlignment="Center" TextWrapping="Wrap" />
+                                        <ToggleSwitch x:Name="ShowClockToggle" Style="{StaticResource RowSwitch}" Toggled="Toggle_Toggled" />
+                                    </Grid>
                                 </StackPanel>
-                                <TextBlock Text="Changing the main Shape controls resets these." Style="{StaticResource CaptionTextBlockStyle}"
-                                           Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap" Margin="0,4,0,12" />
-                            </StackPanel>
-
-                            <TextBlock Style="{StaticResource Strong}" Text="More options" Margin="0,0,0,4" />
-                            <Grid Style="{StaticResource Row}">
-                                <Grid.ColumnDefinitions><ColumnDefinition /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
-                                <TextBlock Text="Show tray and widgets only on hover" VerticalAlignment="Center" TextWrapping="Wrap" />
-                                <ToggleSwitch x:Name="HoverToggle" Style="{StaticResource RowSwitch}" Toggled="Toggle_Toggled" />
-                            </Grid>
-                            <Grid Style="{StaticResource Row}">
-                                <Grid.ColumnDefinitions><ColumnDefinition /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
-                                <TextBlock Text="TranslucentTB compatibility" VerticalAlignment="Center" TextWrapping="Wrap" />
-                                <ToggleSwitch x:Name="CompositionToggle" Style="{StaticResource RowSwitch}" Toggled="Toggle_Toggled" />
-                            </Grid>
-                            <Grid Style="{StaticResource Row}">
-                                <Grid.ColumnDefinitions><ColumnDefinition /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
-                                <TextBlock Text="Auto-hide the taskbar" VerticalAlignment="Center" TextWrapping="Wrap" />
-                                <ToggleSwitch x:Name="AutoHideToggle" Style="{StaticResource RowSwitch}" Toggled="Toggle_Toggled" />
-                            </Grid>
+                            </Border>
                         </StackPanel>
-                    </Border>
-                </StackPanel>
-            </ScrollViewer>
 
-            <!-- Help & about -->
-            <ScrollViewer x:Name="AboutPage" Visibility="Collapsed" HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
-                <StackPanel x:Name="AboutStack" Padding="16,14,16,16" VerticalAlignment="Top">
-                    <StackPanel Orientation="Horizontal" Spacing="12">
-                        <ContentControl Style="{StaticResource Logo}" Width="48" Height="48" VerticalAlignment="Center" />
-                        <TextBlock Text="RoundedTB" Style="{StaticResource TitleTextBlockStyle}" VerticalAlignment="Center" />
-                    </StackPanel>
-                    <toolkit:Segmented x:Name="AboutTabs" Margin="0,12,0,0" HorizontalAlignment="Stretch" SelectionChanged="AboutTabs_SelectionChanged">
-                        <toolkit:SegmentedItem Content="About" />
-                        <toolkit:SegmentedItem Content="Help" />
-                        <toolkit:SegmentedItem Content="Links" />
-                    </toolkit:Segmented>
-
-                    <StackPanel x:Name="AboutTabPanel" Margin="0,12,0,0">
+                        <StackPanel Style="{StaticResource SectionHeaderPanel}">
+                            <FontIcon Style="{StaticResource SectionIcon}" Glyph="&#xE9E9;" />
+                            <TextBlock Style="{StaticResource Strong}" Text="Behaviour" />
+                        </StackPanel>
                         <Border Style="{StaticResource Card}">
-                            <Grid ColumnSpacing="12" RowSpacing="6">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="Auto" MinWidth="96" />
-                                    <ColumnDefinition />
-                                </Grid.ColumnDefinitions>
-                                <Grid.RowDefinitions>
-                                    <RowDefinition /><RowDefinition /><RowDefinition /><RowDefinition /><RowDefinition />
-                                </Grid.RowDefinitions>
-                                <TextBlock Style="{StaticResource Secondary}" Text="Version" />
-                                <TextBlock x:Name="InfoVersion" Grid.Column="1" Style="{StaticResource Body}" />
-                                <TextBlock Grid.Row="1" Style="{StaticResource Secondary}" Text="Mode" />
-                                <TextBlock x:Name="InfoMode" Grid.Row="1" Grid.Column="1" Style="{StaticResource Body}" />
-                                <TextBlock Grid.Row="2" Style="{StaticResource Secondary}" Text="Taskbars" />
-                                <TextBlock x:Name="InfoTaskbars" Grid.Row="2" Grid.Column="1" Style="{StaticResource Body}" />
-                                <TextBlock Grid.Row="3" Style="{StaticResource Secondary}" Text="Windows" />
-                                <TextBlock x:Name="InfoWindows" Grid.Row="3" Grid.Column="1" Style="{StaticResource Body}" />
-                                <TextBlock Grid.Row="4" Style="{StaticResource Secondary}" Text="Architecture" />
-                                <TextBlock x:Name="InfoArch" Grid.Row="4" Grid.Column="1" Style="{StaticResource Body}" />
+                            <StackPanel>
+                                <Grid Style="{StaticResource Row}">
+                                    <Grid.ColumnDefinitions><ColumnDefinition /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                                    <TextBlock Text="Fill when a window is maximised" VerticalAlignment="Center" TextWrapping="Wrap" />
+                                    <ToggleSwitch x:Name="FillMaximisedToggle" Style="{StaticResource RowSwitch}" Toggled="Toggle_Toggled" />
+                                </Grid>
+                                <Grid Style="{StaticResource Row}" Margin="16,0,0,0">
+                                    <Grid.ColumnDefinitions><ColumnDefinition /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                                    <TextBlock Text="Also fill during Alt+Tab" VerticalAlignment="Center" TextWrapping="Wrap" />
+                                    <ToggleSwitch x:Name="FillTaskSwitchToggle" Style="{StaticResource RowSwitch}" Toggled="Toggle_Toggled" />
+                                </Grid>
+                                <Grid Style="{StaticResource Row}">
+                                    <Grid.ColumnDefinitions><ColumnDefinition /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                                    <TextBlock Text="Run at startup" VerticalAlignment="Center" TextWrapping="Wrap" />
+                                    <ToggleSwitch x:Name="StartupToggle" Style="{StaticResource RowSwitch}" Toggled="Startup_Toggled" />
+                                </Grid>
+                            </StackPanel>
+                        </Border>
+
+                        <Button x:Name="AdvancedButton" Margin="0,14,0,0" Padding="14,0" MinHeight="40"
+                                HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch"
+                                Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                                CornerRadius="{StaticResource OverlayCornerRadius}"
+                                Click="Advanced_Click" AutomationProperties.Name="Advanced">
+                            <Grid>
+                                <StackPanel Orientation="Horizontal" Spacing="10">
+                                    <FontIcon Style="{StaticResource SectionIcon}" Glyph="&#xE9F5;" />
+                                    <TextBlock Text="Advanced" VerticalAlignment="Center" />
+                                </StackPanel>
+                                <FontIcon x:Name="AdvancedChevron" Glyph="&#xE70D;" FontSize="12" HorizontalAlignment="Right" VerticalAlignment="Center" />
                             </Grid>
-                        </Border>
-                        <TextBlock Style="{StaticResource Secondary}" Margin="4,14,4,0"
-                                   Text="Adds margins, rounded corners and segments to the Windows taskbar. Originally created by Torch; this fork carries on with fixes for current Windows builds." />
-                        <HyperlinkButton Content="Free software under the GNU GPL v3.0" Margin="-8,6,0,0"
-                                         NavigateUri="https://github.com/cryptofyre/RoundedTB/blob/master/LICENSE" />
-                    </StackPanel>
-
-                    <StackPanel x:Name="HelpTabPanel" Margin="0,12,0,0" Visibility="Collapsed">
-                        <Border Style="{StaticResource Card}">
-                            <StackPanel Spacing="10">
-                                <TextBlock Style="{StaticResource Body}"><Run FontWeight="SemiBold" Text="Basic" /> rounds the whole taskbar as one shape. <Run FontWeight="SemiBold" Text="Dynamic" /> splits it into segments that follow your apps, tray, widgets and clock.</TextBlock>
-                                <TextBlock Style="{StaticResource Body}"><Run FontWeight="SemiBold" Text="Margins" /> pull the taskbar in from the screen edges.</TextBlock>
-                                <TextBlock Style="{StaticResource Body}"><Run FontWeight="SemiBold" Text="Advanced" /> gives each dynamic segment its own shape. Moving the main Shape controls resets them.</TextBlock>
-                                <TextBlock Style="{StaticResource Body}"><Run FontWeight="SemiBold" Text="Win + F2" /> shows or hides the system tray at any time.</TextBlock>
-                                <TextBlock Style="{StaticResource Body}" Text="Changes apply as you make them; there is nothing to save." />
-                            </StackPanel>
-                        </Border>
-                        <TextBlock Style="{StaticResource SectionHeader}" Text="Known issues" />
-                        <Border Style="{StaticResource Card}">
-                            <StackPanel Spacing="6">
-                                <TextBlock Style="{StaticResource Body}" Text="• Windows' own taskbar auto-hide isn't supported; use the Auto-hide option under Advanced instead." />
-                                <TextBlock Style="{StaticResource Body}" Text="• Dynamic mode only works with the taskbar at the top or bottom of the screen." />
-                                <TextBlock Style="{StaticResource Body}" Text="• Taskbar mods other than TranslucentTB aren't officially supported." />
-                            </StackPanel>
-                        </Border>
-                    </StackPanel>
-
-                    <StackPanel x:Name="LinksTabPanel" Margin="0,12,0,0" Visibility="Collapsed">
-                        <Border Style="{StaticResource Card}">
+                        </Button>
+                        <Border x:Name="AdvancedPanel" Style="{StaticResource Card}" Margin="0,6,0,0" Padding="14,10,14,12" Visibility="Collapsed">
                             <StackPanel>
-                                <HyperlinkButton Style="{StaticResource LinkRow}" NavigateUri="https://github.com/cryptofyre/RoundedTB#readme">
-                                    <StackPanel Orientation="Horizontal" Spacing="10">
-                                        <FontIcon Glyph="&#xE8A5;" FontSize="16" />
-                                        <TextBlock Text="README and setup" />
+                                <StackPanel x:Name="SegmentLayoutSection">
+                                    <TextBlock Style="{StaticResource Strong}" Text="Per-segment layout (dynamic mode)" Margin="0,0,0,8" />
+                                    <toolkit:Segmented x:Name="SegmentSegmented" HorizontalAlignment="Stretch" SelectionChanged="Segment_SelectionChanged">
+                                        <toolkit:SegmentedItem Content="Apps" />
+                                        <toolkit:SegmentedItem Content="Tray" />
+                                        <toolkit:SegmentedItem Content="Widgets" />
+                                        <toolkit:SegmentedItem Content="Clock" />
+                                    </toolkit:Segmented>
+                                    <Grid Margin="0,10,0,0">
+                                        <TextBlock Text="Corner radius" VerticalAlignment="Center" />
+                                        <TextBlock x:Name="SegRadiusValue" Style="{StaticResource Value}" />
+                                    </Grid>
+                                    <Slider x:Name="SegRadiusSlider" Minimum="0" Maximum="32" ValueChanged="SegmentShape_ValueChanged" />
+                                    <Grid ColumnSpacing="16">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition />
+                                            <ColumnDefinition />
+                                        </Grid.ColumnDefinitions>
+                                        <Grid.RowDefinitions>
+                                            <RowDefinition />
+                                            <RowDefinition />
+                                        </Grid.RowDefinitions>
+                                        <Slider x:Name="SegTopSlider" Header="Top" Minimum="0" Maximum="20" ValueChanged="SegmentShape_ValueChanged" />
+                                        <Slider x:Name="SegBottomSlider" Grid.Column="1" Header="Bottom" Minimum="0" Maximum="20" ValueChanged="SegmentShape_ValueChanged" />
+                                        <Slider x:Name="SegLeftSlider" Grid.Row="1" Header="Left" Minimum="0" Maximum="20" ValueChanged="SegmentShape_ValueChanged" />
+                                        <Slider x:Name="SegRightSlider" Grid.Row="1" Grid.Column="1" Header="Right" Minimum="0" Maximum="20" ValueChanged="SegmentShape_ValueChanged" />
+                                    </Grid>
+                                    <StackPanel x:Name="SegWidthPanel">
+                                        <Grid>
+                                            <TextBlock Text="Segment width" VerticalAlignment="Center" />
+                                            <TextBlock x:Name="SegWidthValue" Style="{StaticResource Value}" />
+                                        </Grid>
+                                        <Slider x:Name="SegWidthSlider" Minimum="40" Maximum="400" LargeChange="10" ValueChanged="SegmentShape_ValueChanged" />
                                     </StackPanel>
-                                </HyperlinkButton>
-                                <HyperlinkButton Style="{StaticResource LinkRow}" NavigateUri="https://github.com/cryptofyre/RoundedTB/issues">
-                                    <StackPanel Orientation="Horizontal" Spacing="10">
-                                        <FontIcon Glyph="&#xEBE8;" FontSize="16" />
-                                        <TextBlock Text="Report an issue" />
-                                    </StackPanel>
-                                </HyperlinkButton>
-                                <HyperlinkButton Style="{StaticResource LinkRow}" NavigateUri="https://github.com/cryptofyre/RoundedTB/releases">
-                                    <StackPanel Orientation="Horizontal" Spacing="10">
-                                        <FontIcon Glyph="&#xE896;" FontSize="16" />
-                                        <TextBlock Text="Latest releases" />
-                                    </StackPanel>
-                                </HyperlinkButton>
-                                <HyperlinkButton Style="{StaticResource LinkRow}" NavigateUri="https://github.com/RoundedTB/RoundedTB">
-                                    <StackPanel Orientation="Horizontal" Spacing="10">
-                                        <FontIcon Glyph="&#xE774;" FontSize="16" />
-                                        <TextBlock Text="Original RoundedTB project" />
-                                    </StackPanel>
-                                </HyperlinkButton>
-                            </StackPanel>
-                        </Border>
-                        <TextBlock Style="{StaticResource SectionHeader}" Text="Troubleshooting" />
-                        <Border Style="{StaticResource Card}">
-                            <StackPanel>
-                                <HyperlinkButton Style="{StaticResource LinkRow}" Click="OpenConfig_Click">
-                                    <StackPanel Orientation="Horizontal" Spacing="10">
-                                        <FontIcon Glyph="&#xE8E5;" FontSize="16" />
-                                        <TextBlock Text="Open settings file" />
-                                    </StackPanel>
-                                </HyperlinkButton>
-                                <HyperlinkButton Style="{StaticResource LinkRow}" Click="OpenSettingsFolder_Click">
-                                    <StackPanel Orientation="Horizontal" Spacing="10">
-                                        <FontIcon Glyph="&#xE838;" FontSize="16" />
-                                        <TextBlock Text="Open settings folder" />
-                                    </StackPanel>
-                                </HyperlinkButton>
+                                    <TextBlock Text="Changing the main Shape controls resets these." Style="{StaticResource CaptionTextBlockStyle}"
+                                               Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap" Margin="0,4,0,12" />
+                                </StackPanel>
+
+                                <TextBlock Style="{StaticResource Strong}" Text="More options" Margin="0,0,0,4" />
+                                <Grid Style="{StaticResource Row}">
+                                    <Grid.ColumnDefinitions><ColumnDefinition /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                                    <TextBlock Text="Show tray and widgets only on hover" VerticalAlignment="Center" TextWrapping="Wrap" />
+                                    <ToggleSwitch x:Name="HoverToggle" Style="{StaticResource RowSwitch}" Toggled="Toggle_Toggled" />
+                                </Grid>
+                                <Grid Style="{StaticResource Row}">
+                                    <Grid.ColumnDefinitions><ColumnDefinition /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                                    <TextBlock Text="TranslucentTB compatibility" VerticalAlignment="Center" TextWrapping="Wrap" />
+                                    <ToggleSwitch x:Name="CompositionToggle" Style="{StaticResource RowSwitch}" Toggled="Toggle_Toggled" />
+                                </Grid>
+                                <Grid Style="{StaticResource Row}">
+                                    <Grid.ColumnDefinitions><ColumnDefinition /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                                    <TextBlock Text="Auto-hide the taskbar" VerticalAlignment="Center" TextWrapping="Wrap" />
+                                    <ToggleSwitch x:Name="AutoHideToggle" Style="{StaticResource RowSwitch}" Toggled="Toggle_Toggled" />
+                                </Grid>
                             </StackPanel>
                         </Border>
                     </StackPanel>
-                </StackPanel>
-            </ScrollViewer>
+                </ScrollViewer>
 
-            <Border Grid.Row="1" Padding="10,6" BorderThickness="0,1,0,0"
+                <!-- Help & about -->
+                <ScrollViewer x:Name="AboutPage" Visibility="Collapsed" HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
+                    <StackPanel x:Name="AboutStack" Padding="16,14,16,16" VerticalAlignment="Top">
+                        <StackPanel Orientation="Horizontal" Spacing="12">
+                            <ContentControl Style="{StaticResource Logo}" Width="48" Height="48" VerticalAlignment="Center" />
+                            <TextBlock Text="RoundedTB" Style="{StaticResource TitleTextBlockStyle}" VerticalAlignment="Center" />
+                        </StackPanel>
+                        <toolkit:Segmented x:Name="AboutTabs" Margin="0,12,0,0" HorizontalAlignment="Stretch" SelectionChanged="AboutTabs_SelectionChanged">
+                            <toolkit:SegmentedItem Content="About" />
+                            <toolkit:SegmentedItem Content="Help" />
+                            <toolkit:SegmentedItem Content="Links" />
+                        </toolkit:Segmented>
+
+                        <StackPanel x:Name="AboutTabPanel" Margin="0,12,0,0">
+                            <Border Style="{StaticResource Card}">
+                                <Grid ColumnSpacing="12" RowSpacing="6">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto" MinWidth="96" />
+                                        <ColumnDefinition />
+                                    </Grid.ColumnDefinitions>
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition /><RowDefinition /><RowDefinition /><RowDefinition /><RowDefinition />
+                                    </Grid.RowDefinitions>
+                                    <TextBlock Style="{StaticResource Secondary}" Text="Version" />
+                                    <TextBlock x:Name="InfoVersion" Grid.Column="1" Style="{StaticResource Body}" />
+                                    <TextBlock Grid.Row="1" Style="{StaticResource Secondary}" Text="Mode" />
+                                    <TextBlock x:Name="InfoMode" Grid.Row="1" Grid.Column="1" Style="{StaticResource Body}" />
+                                    <TextBlock Grid.Row="2" Style="{StaticResource Secondary}" Text="Taskbars" />
+                                    <TextBlock x:Name="InfoTaskbars" Grid.Row="2" Grid.Column="1" Style="{StaticResource Body}" />
+                                    <TextBlock Grid.Row="3" Style="{StaticResource Secondary}" Text="Windows" />
+                                    <TextBlock x:Name="InfoWindows" Grid.Row="3" Grid.Column="1" Style="{StaticResource Body}" />
+                                    <TextBlock Grid.Row="4" Style="{StaticResource Secondary}" Text="Architecture" />
+                                    <TextBlock x:Name="InfoArch" Grid.Row="4" Grid.Column="1" Style="{StaticResource Body}" />
+                                </Grid>
+                            </Border>
+                            <TextBlock Style="{StaticResource Secondary}" Margin="4,14,4,0"
+                                       Text="Adds margins, rounded corners and segments to the Windows taskbar. Originally created by Torch; this fork carries on with fixes for current Windows builds." />
+                            <HyperlinkButton Content="Free software under the GNU GPL v3.0" Margin="-8,6,0,0"
+                                             NavigateUri="https://github.com/cryptofyre/RoundedTB/blob/master/LICENSE" />
+                        </StackPanel>
+
+                        <StackPanel x:Name="HelpTabPanel" Margin="0,12,0,0" Visibility="Collapsed">
+                            <Border Style="{StaticResource Card}">
+                                <StackPanel Spacing="10">
+                                    <TextBlock Style="{StaticResource Body}"><Run FontWeight="SemiBold" Text="Basic" /> rounds the whole taskbar as one shape. <Run FontWeight="SemiBold" Text="Dynamic" /> splits it into segments that follow your apps, tray, widgets and clock.</TextBlock>
+                                    <TextBlock Style="{StaticResource Body}"><Run FontWeight="SemiBold" Text="Margins" /> pull the taskbar in from the screen edges.</TextBlock>
+                                    <TextBlock Style="{StaticResource Body}"><Run FontWeight="SemiBold" Text="Advanced" /> gives each dynamic segment its own shape. Moving the main Shape controls resets them.</TextBlock>
+                                    <TextBlock Style="{StaticResource Body}"><Run FontWeight="SemiBold" Text="Win + F2" /> shows or hides the system tray at any time.</TextBlock>
+                                    <TextBlock Style="{StaticResource Body}" Text="Changes apply as you make them; there is nothing to save." />
+                                </StackPanel>
+                            </Border>
+                            <TextBlock Style="{StaticResource SectionHeader}" Text="Known issues" />
+                            <Border Style="{StaticResource Card}">
+                                <StackPanel Spacing="6">
+                                    <TextBlock Style="{StaticResource Body}" Text="• Windows' own taskbar auto-hide isn't supported; use the Auto-hide option under Advanced instead." />
+                                    <TextBlock Style="{StaticResource Body}" Text="• Dynamic mode only works with the taskbar at the top or bottom of the screen." />
+                                    <TextBlock Style="{StaticResource Body}" Text="• Taskbar mods other than TranslucentTB aren't officially supported." />
+                                </StackPanel>
+                            </Border>
+                        </StackPanel>
+
+                        <StackPanel x:Name="LinksTabPanel" Margin="0,12,0,0" Visibility="Collapsed">
+                            <Border Style="{StaticResource Card}">
+                                <StackPanel>
+                                    <HyperlinkButton Style="{StaticResource LinkRow}" NavigateUri="https://github.com/cryptofyre/RoundedTB#readme">
+                                        <StackPanel Orientation="Horizontal" Spacing="10">
+                                            <FontIcon Glyph="&#xE8A5;" FontSize="16" />
+                                            <TextBlock Text="README and setup" />
+                                        </StackPanel>
+                                    </HyperlinkButton>
+                                    <HyperlinkButton Style="{StaticResource LinkRow}" NavigateUri="https://github.com/cryptofyre/RoundedTB/issues">
+                                        <StackPanel Orientation="Horizontal" Spacing="10">
+                                            <FontIcon Glyph="&#xEBE8;" FontSize="16" />
+                                            <TextBlock Text="Report an issue" />
+                                        </StackPanel>
+                                    </HyperlinkButton>
+                                    <HyperlinkButton Style="{StaticResource LinkRow}" NavigateUri="https://github.com/cryptofyre/RoundedTB/releases">
+                                        <StackPanel Orientation="Horizontal" Spacing="10">
+                                            <FontIcon Glyph="&#xE896;" FontSize="16" />
+                                            <TextBlock Text="Latest releases" />
+                                        </StackPanel>
+                                    </HyperlinkButton>
+                                    <HyperlinkButton Style="{StaticResource LinkRow}" NavigateUri="https://github.com/RoundedTB/RoundedTB">
+                                        <StackPanel Orientation="Horizontal" Spacing="10">
+                                            <FontIcon Glyph="&#xE774;" FontSize="16" />
+                                            <TextBlock Text="Original RoundedTB project" />
+                                        </StackPanel>
+                                    </HyperlinkButton>
+                                </StackPanel>
+                            </Border>
+                            <TextBlock Style="{StaticResource SectionHeader}" Text="Troubleshooting" />
+                            <Border Style="{StaticResource Card}">
+                                <StackPanel>
+                                    <HyperlinkButton Style="{StaticResource LinkRow}" Click="OpenConfig_Click">
+                                        <StackPanel Orientation="Horizontal" Spacing="10">
+                                            <FontIcon Glyph="&#xE8E5;" FontSize="16" />
+                                            <TextBlock Text="Open settings file" />
+                                        </StackPanel>
+                                    </HyperlinkButton>
+                                    <HyperlinkButton Style="{StaticResource LinkRow}" Click="OpenSettingsFolder_Click">
+                                        <StackPanel Orientation="Horizontal" Spacing="10">
+                                            <FontIcon Glyph="&#xE838;" FontSize="16" />
+                                            <TextBlock Text="Open settings folder" />
+                                        </StackPanel>
+                                    </HyperlinkButton>
+                                </StackPanel>
+                            </Border>
+                        </StackPanel>
+                    </StackPanel>
+                </ScrollViewer>
+            </Grid>
+
+            <Border x:Name="Footer" Grid.Row="1" Padding="10,6" BorderThickness="0,1,0,0" CornerRadius="0,0,8,8"
                     BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
                     Background="{ThemeResource LayerOnAcrylicFillColorDefaultBrush}">
                 <Grid>
@@ -435,6 +440,6 @@
                     </Button>
                 </Grid>
             </Border>
-        </Grid>
+        </local:CardPanel>
     </Grid>
 </Window>
