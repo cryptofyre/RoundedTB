@@ -44,6 +44,7 @@ namespace RoundedTB
         private bool isOpen;
         private bool closing;
         private bool sliding;
+        private bool resizeQueued;
         private DateTime lastHidden = DateTime.MinValue;
         private RevealEdge revealEdge = RevealEdge.Bottom;
         private Vector3 hiddenTranslation;
@@ -309,10 +310,20 @@ namespace RoundedTB
 
         private void FollowContentSize()
         {
-            if (isOpen && !sliding)
+            if (!isOpen || sliding || resizeQueued)
             {
-                Place();
+                return;
             }
+            // Several SizeChanged events arrive per layout change; handle them once.
+            resizeQueued = true;
+            DispatcherQueue.TryEnqueue(DispatcherQueuePriority.Low, () =>
+            {
+                resizeQueued = false;
+                if (isOpen && !closing && !sliding)
+                {
+                    Place();
+                }
+            });
         }
 
         /// <summary>
@@ -321,7 +332,24 @@ namespace RoundedTB
         /// </summary>
         private void Place()
         {
-            Native.GetMonitor(targetMonitor, out Native.RECT mon, out Native.RECT work, out double scale);
+            RectInt32 bounds = ComputeBounds(out double scale);
+            AppWindow.MoveAndResize(bounds);
+
+            // Translation is in DIPs; travel the full size so the panel starts behind the edge.
+            float travelY = (float)(bounds.Height / scale) + 2;
+            float travelX = (float)PanelWidth + 2;
+            hiddenTranslation = revealEdge switch
+            {
+                RevealEdge.Top => new Vector3(0, -travelY, 0),
+                RevealEdge.Left => new Vector3(-travelX, 0, 0),
+                RevealEdge.Right => new Vector3(travelX, 0, 0),
+                _ => new Vector3(0, travelY, 0),
+            };
+        }
+
+        private RectInt32 ComputeBounds(out double scale)
+        {
+            Native.GetMonitor(targetMonitor, out Native.RECT mon, out Native.RECT work, out scale);
             Native.RECT tb = Native.FindTaskbarRect(targetMonitor, mon, work);
 
             int gap = (int)Math.Round(12 * scale);
@@ -356,18 +384,7 @@ namespace RoundedTB
                 revealEdge = RevealEdge.Left;
                 x = tb.Right + gap;
             }
-            AppWindow.MoveAndResize(new RectInt32(x, y, width, height));
-
-            // Translation is in DIPs; travel the full size so the panel starts behind the edge.
-            float travelY = (float)(height / scale) + 2;
-            float travelX = (float)PanelWidth + 2;
-            hiddenTranslation = revealEdge switch
-            {
-                RevealEdge.Top => new Vector3(0, -travelY, 0),
-                RevealEdge.Left => new Vector3(-travelX, 0, 0),
-                RevealEdge.Right => new Vector3(travelX, 0, 0),
-                _ => new Vector3(0, travelY, 0),
-            };
+            return new RectInt32(x, y, width, height);
         }
 
         #endregion
@@ -714,6 +731,25 @@ namespace RoundedTB
             loading = false;
         }
 
+        private void Advanced_Click(object sender, RoutedEventArgs e)
+        {
+            bool expand = AdvancedPanel.Visibility != Visibility.Visible;
+            AdvancedPanel.Visibility = expand ? Visibility.Visible : Visibility.Collapsed;
+
+            Visual chevron = ElementCompositionPreview.GetElementVisual(AdvancedChevron);
+            chevron.CenterPoint = new Vector3((float)AdvancedChevron.ActualWidth / 2, (float)AdvancedChevron.ActualHeight / 2, 0);
+            ScalarKeyFrameAnimation rotate = compositor.CreateScalarKeyFrameAnimation();
+            rotate.InsertKeyFrame(1f, expand ? 180f : 0f);
+            rotate.Duration = TimeSpan.FromMilliseconds(200);
+            chevron.StartAnimation("RotationAngleInDegrees", rotate);
+
+            if (expand)
+            {
+                FadeIn(AdvancedPanel);
+                DispatcherQueue.TryEnqueue(DispatcherQueuePriority.Low, () => AdvancedPanel.StartBringIntoView());
+            }
+        }
+
         private void Help_Click(object sender, RoutedEventArgs e) => ShowAboutPage(AboutPage.Visibility != Visibility.Visible);
 
         private void ShowAboutPage(bool show)
@@ -728,8 +764,23 @@ namespace RoundedTB
             }
             SettingsPage.Visibility = show ? Visibility.Collapsed : Visibility.Visible;
             AboutPage.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
+            FadeIn(show ? AboutPage : SettingsPage);
+            FollowContentSize();
             HelpButtonIcon.Glyph = show ? "" : "";
             HelpButtonText.Text = show ? "Back" : "Help & about";
+        }
+
+        private void FadeIn(UIElement element)
+        {
+            if (!isOpen)
+            {
+                return;
+            }
+            ScalarKeyFrameAnimation fade = compositor.CreateScalarKeyFrameAnimation();
+            fade.InsertKeyFrame(0f, 0f);
+            fade.InsertKeyFrame(1f, 1f);
+            fade.Duration = TimeSpan.FromMilliseconds(150);
+            ElementCompositionPreview.GetElementVisual(element).StartAnimation("Opacity", fade);
         }
 
         private void AboutTabs_SelectionChanged(object sender, SelectionChangedEventArgs e)
@@ -737,6 +788,8 @@ namespace RoundedTB
             AboutTabPanel.Visibility = AboutTabs.SelectedIndex == 0 ? Visibility.Visible : Visibility.Collapsed;
             HelpTabPanel.Visibility = AboutTabs.SelectedIndex == 1 ? Visibility.Visible : Visibility.Collapsed;
             LinksTabPanel.Visibility = AboutTabs.SelectedIndex == 2 ? Visibility.Visible : Visibility.Collapsed;
+            FadeIn(AboutTabs.SelectedIndex switch { 1 => HelpTabPanel, 2 => LinksTabPanel, _ => AboutTabPanel });
+            FollowContentSize();
         }
 
         private void PopulateAbout()
