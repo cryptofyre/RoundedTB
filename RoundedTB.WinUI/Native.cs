@@ -1,0 +1,228 @@
+using System;
+using System.Runtime.InteropServices;
+
+namespace RoundedTB.WinUI
+{
+    internal static partial class Native
+    {
+        [StructLayout(LayoutKind.Sequential)]
+        public struct POINT { public int X, Y; }
+
+        [StructLayout(LayoutKind.Sequential)]
+        public struct RECT { public int Left, Top, Right, Bottom; }
+
+        [StructLayout(LayoutKind.Sequential)]
+        public struct MONITORINFO
+        {
+            public int cbSize;
+            public RECT rcMonitor;
+            public RECT rcWork;
+            public uint dwFlags;
+        }
+
+        [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+        public struct NOTIFYICONDATA
+        {
+            public int cbSize;
+            public IntPtr hWnd;
+            public uint uID;
+            public uint uFlags;
+            public uint uCallbackMessage;
+            public IntPtr hIcon;
+            [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 128)] public string szTip;
+            public uint dwState;
+            public uint dwStateMask;
+            [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 256)] public string szInfo;
+            public uint uVersion;
+            [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 64)] public string szInfoTitle;
+            public uint dwInfoFlags;
+            public Guid guidItem;
+            public IntPtr hBalloonIcon;
+        }
+
+        public delegate IntPtr WndProc(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam);
+
+        public const uint WM_USER = 0x0400;
+        public const uint WM_CONTEXTMENU = 0x007B;
+        public const uint WM_COMMAND = 0x0111;
+        public const uint WM_NULL = 0x0000;
+        public const uint NIN_SELECT = WM_USER + 0;
+        public const uint NIN_KEYSELECT = WM_USER + 1;
+        public const uint NIM_ADD = 0, NIM_MODIFY = 1, NIM_DELETE = 2, NIM_SETVERSION = 4;
+        public const uint NIF_MESSAGE = 0x1, NIF_ICON = 0x2, NIF_TIP = 0x4, NIF_SHOWTIP = 0x80;
+        public const uint NOTIFYICON_VERSION_4 = 4;
+        public const uint IMAGE_ICON = 1, LR_LOADFROMFILE = 0x10;
+        public const uint MF_STRING = 0, MF_SEPARATOR = 0x800;
+        public const uint TPM_RETURNCMD = 0x100, TPM_RIGHTBUTTON = 0x2, TPM_BOTTOMALIGN = 0x20;
+        public const uint MONITOR_DEFAULTTONEAREST = 2;
+        public const int GWL_EXSTYLE = -20;
+        public const int GWL_STYLE = -16;
+        public const long WS_POPUP = 0x80000000, WS_CAPTION = 0xC00000, WS_THICKFRAME = 0x40000, WS_SYSMENU = 0x80000, WS_BORDER = 0x800000, WS_DLGFRAME = 0x400000;
+        public const long WS_EX_TOOLWINDOW = 0x80, WS_EX_APPWINDOW = 0x40000;
+        public const int DWMWA_WINDOW_CORNER_PREFERENCE = 33, DWMWCP_DONOTROUND = 1, DWMWCP_ROUND = 2;
+        public const int DWMWA_CLOAK = 13;
+        public const int DWMWA_BORDER_COLOR = 34;
+        public const int DWMWA_COLOR_NONE = unchecked((int)0xFFFFFFFE);
+
+        [StructLayout(LayoutKind.Sequential)]
+        public struct MARGINS { public int Left, Right, Top, Bottom; }
+
+        [LibraryImport("dwmapi.dll")]
+        public static partial int DwmExtendFrameIntoClientArea(IntPtr hWnd, in MARGINS margins);
+
+        [LibraryImport("user32.dll", EntryPoint = "RegisterClassExW", SetLastError = true)]
+        public static partial ushort RegisterClassEx(in WNDCLASSEX wc);
+
+        [StructLayout(LayoutKind.Sequential)]
+        public struct WNDCLASSEX
+        {
+            public int cbSize;
+            public uint style;
+            public IntPtr lpfnWndProc;
+            public int cbClsExtra;
+            public int cbWndExtra;
+            public IntPtr hInstance;
+            public IntPtr hIcon;
+            public IntPtr hCursor;
+            public IntPtr hbrBackground;
+            public IntPtr lpszMenuName;
+            public IntPtr lpszClassName;
+            public IntPtr hIconSm;
+        }
+
+        [LibraryImport("user32.dll", EntryPoint = "CreateWindowExW", SetLastError = true, StringMarshalling = StringMarshalling.Utf16)]
+        public static partial IntPtr CreateWindowEx(uint exStyle, string className, string windowName, uint style,
+            int x, int y, int width, int height, IntPtr parent, IntPtr menu, IntPtr instance, IntPtr param);
+
+        [LibraryImport("user32.dll", EntryPoint = "DefWindowProcW")]
+        public static partial IntPtr DefWindowProc(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam);
+
+        [LibraryImport("user32.dll", EntryPoint = "RegisterWindowMessageW", StringMarshalling = StringMarshalling.Utf16)]
+        public static partial uint RegisterWindowMessage(string name);
+
+        [LibraryImport("user32.dll", EntryPoint = "LoadImageW", StringMarshalling = StringMarshalling.Utf16)]
+        public static partial IntPtr LoadImage(IntPtr instance, string name, uint type, int cx, int cy, uint flags);
+
+        [LibraryImport("user32.dll")]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        public static partial bool DestroyIcon(IntPtr icon);
+
+        [DllImport("shell32.dll", EntryPoint = "Shell_NotifyIconW", CharSet = CharSet.Unicode)]
+        public static extern bool Shell_NotifyIcon(uint message, ref NOTIFYICONDATA data);
+
+        [LibraryImport("user32.dll")]
+        public static partial IntPtr CreatePopupMenu();
+
+        [LibraryImport("user32.dll", EntryPoint = "AppendMenuW", StringMarshalling = StringMarshalling.Utf16)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        public static partial bool AppendMenu(IntPtr menu, uint flags, nuint id, string? text);
+
+        [LibraryImport("user32.dll")]
+        public static partial int TrackPopupMenuEx(IntPtr menu, uint flags, int x, int y, IntPtr hWnd, IntPtr tpm);
+
+        [LibraryImport("user32.dll")]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        public static partial bool DestroyMenu(IntPtr menu);
+
+        [LibraryImport("user32.dll")]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        public static partial bool SetForegroundWindow(IntPtr hWnd);
+
+        [LibraryImport("user32.dll")]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        public static partial bool PostMessage(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam);
+
+        [LibraryImport("user32.dll")]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        public static partial bool GetCursorPos(out POINT point);
+
+        [LibraryImport("user32.dll")]
+        public static partial IntPtr MonitorFromPoint(POINT point, uint flags);
+
+        [LibraryImport("user32.dll")]
+        public static partial IntPtr MonitorFromWindow(IntPtr hWnd, uint flags);
+
+        [LibraryImport("user32.dll", EntryPoint = "GetMonitorInfoW")]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        public static partial bool GetMonitorInfo(IntPtr monitor, ref MONITORINFO info);
+
+        [LibraryImport("shcore.dll")]
+        public static partial int GetDpiForMonitor(IntPtr monitor, int dpiType, out uint dpiX, out uint dpiY);
+
+        [LibraryImport("user32.dll", EntryPoint = "FindWindowExW", StringMarshalling = StringMarshalling.Utf16)]
+        public static partial IntPtr FindWindowEx(IntPtr parent, IntPtr childAfter, string? className, string? windowName);
+
+        [LibraryImport("user32.dll")]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        public static partial bool GetWindowRect(IntPtr hWnd, out RECT rect);
+
+        [LibraryImport("user32.dll", EntryPoint = "GetWindowLongPtrW")]
+        public static partial long GetWindowLongPtr(IntPtr hWnd, int index);
+
+        [LibraryImport("user32.dll", EntryPoint = "SetWindowLongPtrW")]
+        public static partial long SetWindowLongPtr(IntPtr hWnd, int index, long value);
+
+        [LibraryImport("dwmapi.dll")]
+        public static partial int DwmSetWindowAttribute(IntPtr hWnd, int attribute, ref int value, int size);
+
+        [StructLayout(LayoutKind.Sequential)]
+        public struct DispatcherQueueOptions
+        {
+            public int dwSize;
+            public int threadType;
+            public int apartmentType;
+        }
+
+        [LibraryImport("CoreMessaging.dll")]
+        public static partial int CreateDispatcherQueueController(DispatcherQueueOptions options, out IntPtr controller);
+
+        private static IntPtr systemDispatcherQueueController;
+
+        /// <summary>
+        /// Windows.UI.Composition needs a Windows.System.DispatcherQueue on the thread; the Windows App
+        /// SDK only sets up its own Microsoft.UI.Dispatching one.
+        /// </summary>
+        public static void EnsureSystemDispatcherQueue()
+        {
+            if (systemDispatcherQueueController != IntPtr.Zero || Windows.System.DispatcherQueue.GetForCurrentThread() != null)
+            {
+                return;
+            }
+            DispatcherQueueOptions options = new() { dwSize = Marshal.SizeOf<DispatcherQueueOptions>(), threadType = 2, apartmentType = 0 };
+            CreateDispatcherQueueController(options, out systemDispatcherQueueController);
+        }
+
+        [LibraryImport("kernel32.dll", EntryPoint = "GetModuleHandleW", StringMarshalling = StringMarshalling.Utf16)]
+        public static partial IntPtr GetModuleHandle(string? name);
+
+        /// <summary>Monitor rect, work area and scale (1.0 = 96 DPI) for a monitor.</summary>
+        public static void GetMonitor(IntPtr monitor, out RECT monitorRect, out RECT workRect, out double scale)
+        {
+            MONITORINFO mi = new() { cbSize = Marshal.SizeOf<MONITORINFO>() };
+            GetMonitorInfo(monitor, ref mi);
+            monitorRect = mi.rcMonitor;
+            workRect = mi.rcWork;
+            scale = GetDpiForMonitor(monitor, 0, out uint dpi, out _) == 0 ? dpi / 96.0 : 1.0;
+        }
+
+        /// <summary>
+        /// The taskbar on a monitor: Shell_TrayWnd for the primary one, Shell_SecondaryTrayWnd for
+        /// the rest. Falls back to the strip between the work area and the monitor edge.
+        /// </summary>
+        public static RECT FindTaskbarRect(IntPtr monitor, RECT monitorRect, RECT workRect)
+        {
+            foreach (string cls in new[] { "Shell_TrayWnd", "Shell_SecondaryTrayWnd" })
+            {
+                IntPtr hwnd = IntPtr.Zero;
+                while ((hwnd = FindWindowEx(IntPtr.Zero, hwnd, cls, null)) != IntPtr.Zero)
+                {
+                    if (MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST) == monitor && GetWindowRect(hwnd, out RECT r))
+                    {
+                        return r;
+                    }
+                }
+            }
+            return new RECT { Left = monitorRect.Left, Right = monitorRect.Right, Top = workRect.Bottom, Bottom = monitorRect.Bottom };
+        }
+    }
+}

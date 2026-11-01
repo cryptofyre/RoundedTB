@@ -1,0 +1,65 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Spike: WinUI 3 rebuild of the settings flyout, for comparison with the WPF one in
+       ../RoundedTB. It only reads and writes rtb.json; it does not touch the taskbar.
+       Deliberately not part of RoundedTB.sln so the WPF build is unaffected. -->
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows10.0.22621.0</TargetFramework>
+    <TargetPlatformMinVersion>10.0.19041.0</TargetPlatformMinVersion>
+    <RootNamespace>RoundedTB.WinUI</RootNamespace>
+    <AssemblyName>RoundedTB.WinUI</AssemblyName>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <ApplicationIcon>..\RoundedTB\RoundedTBCanary.ico</ApplicationIcon>
+    <Platforms>x64;ARM64</Platforms>
+    <RuntimeIdentifiers>win-x64;win-arm64</RuntimeIdentifiers>
+    <UseWinUI>true</UseWinUI>
+    <Nullable>enable</Nullable>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
+    <!-- Normal and experimental (below) builds use separate obj/bin folders; keep each out of the other. -->
+    <DefaultItemExcludes>$(DefaultItemExcludes);obj\**;bin\**;obj-exp\**;bin-exp\**</DefaultItemExcludes>
+
+    <!-- Unpackaged and self-contained: no MSIX, no Windows App SDK runtime install. -->
+    <WindowsPackageType>None</WindowsPackageType>
+    <WindowsAppSDKSelfContained>true</WindowsAppSDKSelfContained>
+    <SelfContained>true</SelfContained>
+    <EnableMsixTooling>true</EnableMsixTooling>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(RtbExperimental)' == 'true'">
+    <DefineConstants>$(DefineConstants);RTB_EXTERNAL_BACKDROP</DefineConstants>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(RuntimeIdentifier)' == '' and '$(Platform)' == 'ARM64'">
+    <RuntimeIdentifier>win-arm64</RuntimeIdentifier>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(RuntimeIdentifier)' == '' and '$(Platform)' == 'x64'">
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.WindowsAppSDK" Version="2.6.4" Condition="'$(RtbExperimental)' != 'true'" />
+    <!-- -p:RtbExperimental=true: ContentExternalBackdropLink (experimental in 2.x) puts the acrylic
+         inside the sliding panel. For comparison only; experimental builds are not shippable.
+         dotnet build -p:Platform=ARM64 -p:RtbExperimental=true
+                      -p:BaseIntermediateOutputPath=obj-exp\ -p:BaseOutputPath=bin-exp\ -->
+    <PackageReference Include="Microsoft.WindowsAppSDK" Version="2.5.4-experimental" Condition="'$(RtbExperimental)' == 'true'" />
+    <PackageReference Include="Microsoft.Windows.SDK.BuildTools" Version="10.0.28000.1721" />
+    <!-- The metapackage (which the toolkit also depends on) drags in the AI/ML/Search/Widgets
+         components: onnxruntime, DirectML and friends, ~100 MB of self-contained output this app
+         never loads. Keep their assets out. -->
+    <PackageReference Include="Microsoft.WindowsAppSDK.AI" Version="2.6.4" ExcludeAssets="all" Condition="'$(RtbExperimental)' != 'true'" />
+    <PackageReference Include="Microsoft.WindowsAppSDK.ML" Version="2.6.4" ExcludeAssets="all" Condition="'$(RtbExperimental)' != 'true'" />
+    <PackageReference Include="Microsoft.WindowsAppSDK.Search" Version="2.6.4" ExcludeAssets="all" Condition="'$(RtbExperimental)' != 'true'" />
+    <PackageReference Include="Microsoft.WindowsAppSDK.Widgets" Version="2.6.4" ExcludeAssets="all" Condition="'$(RtbExperimental)' != 'true'" />
+    <PackageReference Include="Microsoft.Windows.AI.MachineLearning" Version="2.4.89" ExcludeAssets="all" Condition="'$(RtbExperimental)' != 'true'" />
+    <PackageReference Include="CommunityToolkit.WinUI.Controls.Segmented" Version="8.2.251219" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Content Include="..\RoundedTB\res\TrayDark.ico" Link="Assets\TrayDark.ico" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="..\RoundedTB\res\TrayLight.ico" Link="Assets\TrayLight.ico" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+</Project>
