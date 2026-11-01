@@ -530,6 +530,7 @@ namespace RoundedTB
                 HoverToggle.IsOn = s.ShowSegmentsOnHover;
                 CompositionToggle.IsOn = s.CompositionCompat;
                 AutoHideToggle.IsOn = s.AutoHide == 1;
+                WatermarkToggle.IsOn = s.RemoveInsiderWatermark;
 
                 if (SegmentSegmented.SelectedIndex < 0)
                 {
@@ -797,6 +798,25 @@ namespace RoundedTB
             ScheduleApply();
         }
 
+        // Doesn't touch the taskbar, so it skips the redraw path: save it and patch Explorer in the background.
+        private void Watermark_Toggled(object sender, RoutedEventArgs e)
+        {
+            if (loading)
+            {
+                return;
+            }
+            Settings.RemoveInsiderWatermark = WatermarkToggle.IsOn;
+            host.interaction.WriteJSON();
+            SetWatermarkStatus(WatermarkToggle.IsOn ? "Removing the watermark…" : "Restoring the watermark…");
+            host.SyncWatermarkState();
+        }
+
+        public void SetWatermarkStatus(string message)
+        {
+            WatermarkStatus.Text = message;
+            WatermarkStatus.Visibility = string.IsNullOrEmpty(message) ? Visibility.Collapsed : Visibility.Visible;
+        }
+
         private async void Startup_Toggled(object sender, RoutedEventArgs e)
         {
             if (loading)
@@ -848,7 +868,7 @@ namespace RoundedTB
             {
                 EnterPage(show ? AboutPage : SettingsPage, forward: show);
             }
-            HelpButtonIcon.Glyph = show ? "" : "";
+            HelpButtonIcon.Glyph = show ? "\uE72B" : "\uE946";
             HelpButtonText.Text = show ? "Back" : "Help & about";
         }
 

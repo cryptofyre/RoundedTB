@@ -16,7 +16,6 @@ namespace RoundedTB
 
         private const uint CallbackMessage = Native.WM_USER + 0x100;
         private const uint IconId = 1;
-        private const int MenuSettings = 1, MenuQuit = 2;
 
         private readonly Native.WndProc wndProc;
         private readonly uint taskbarCreatedMessage;
@@ -26,7 +25,7 @@ namespace RoundedTB
 
         public event Action Clicked;
         public event Action ShowSettingsRequested;
-        public event Action QuitRequested;
+        public event Action<int, int> ContextMenuRequested;
         public event Action<uint, IntPtr, IntPtr> MessageReceived;
 
         public IntPtr Handle { get; }
@@ -115,7 +114,7 @@ namespace RoundedTB
                 }
                 else if (evt == Native.WM_CONTEXTMENU)
                 {
-                    ShowMenu((short)(wParam.ToInt64() & 0xFFFF), (short)((wParam.ToInt64() >> 16) & 0xFFFF));
+                    ContextMenuRequested?.Invoke((short)(wParam.ToInt64() & 0xFFFF), (short)((wParam.ToInt64() >> 16) & 0xFFFF));
                 }
                 return IntPtr.Zero;
             }
@@ -131,26 +130,6 @@ namespace RoundedTB
             }
             MessageReceived?.Invoke(msg, wParam, lParam);
             return Native.DefWindowProc(hWnd, msg, wParam, lParam);
-        }
-
-        private void ShowMenu(int x, int y)
-        {
-            IntPtr menu = Native.CreatePopupMenu();
-            Native.AppendMenu(menu, Native.MF_STRING, MenuSettings, "Settings");
-            Native.AppendMenu(menu, Native.MF_SEPARATOR, 0, null);
-            Native.AppendMenu(menu, Native.MF_STRING, MenuQuit, "Quit");
-            Native.SetForegroundWindow(Handle);
-            int cmd = Native.TrackPopupMenuEx(menu, Native.TPM_RETURNCMD | Native.TPM_RIGHTBUTTON | Native.TPM_BOTTOMALIGN, x, y, Handle, IntPtr.Zero);
-            Native.PostMessage(Handle, Native.WM_NULL, IntPtr.Zero, IntPtr.Zero);
-            Native.DestroyMenu(menu);
-            if (cmd == MenuSettings)
-            {
-                ShowSettingsRequested?.Invoke();
-            }
-            else if (cmd == MenuQuit)
-            {
-                QuitRequested?.Invoke();
-            }
         }
 
         public void Dispose()

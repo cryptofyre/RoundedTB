@@ -23,6 +23,7 @@ The RoundedTB on the Microsoft Store is the [original project](https://github.co
 - **Redraws on display changes.** Changing resolution, scaling or the work area rebuilds the taskbar mask instead of leaving it stale.
 - **WinUI 3 settings flyout** that opens from the tray icon above the taskbar, with acrylic and a compositor slide animation.
 - **Native ARM64 builds** alongside x64.
+- **Removes the Insider build watermark** (Advanced → Insider watermark). A C# port of [UWD2](https://github.com/machineonamission/uwd2) by Melody: it resolves `CDesktopWatermark::s_DesktopBuildPaint` from Microsoft's symbols and returns early from it in the running Explorer, on both x64 and ARM64. Re-applies itself if Explorer restarts, and never touches the Activate Windows watermark. Needs the internet once per build to fetch symbols.
 - Plus the stability fixes from [Gniang's fork](https://github.com/Gniang/RoundedTB): .NET 10, a self-healing background worker, atomic settings saves and migration of old configs.
 
 Settings live in `%LOCALAPPDATA%\RoundedTB\rtb.json`. The MSIX package keeps its own copy in its app data, seeded from that file on first run.

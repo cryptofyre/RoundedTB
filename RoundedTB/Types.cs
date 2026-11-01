@@ -242,6 +242,7 @@ namespace RoundedTB
             public bool FillOnTaskSwitch { get; set; }
             public bool ShowSegmentsOnHover { get; set; }
             public int AutoHide { get; set; }
+            public bool RemoveInsiderWatermark { get; set; }
 
             /// <summary>
             /// Copy used for transient, non-persisted overrides (e.g. hover state) so that runtime

@@ -37,6 +37,7 @@ namespace RoundedTB
         private readonly ManualResetEventSlim workerExited = new(true);
         private readonly TrayIcon tray;
         private FlyoutWindow flyout;
+        private TrayMenu trayMenu;
         private int workerRestartCount;
         private DateTime workerRestartWindowStart = DateTime.MinValue;
         private int appliedAutoHide = -1;
@@ -68,7 +69,7 @@ namespace RoundedTB
             // Queued: an exception inside the native window procedure would kill the process outright.
             tray.Clicked += () => Post(ToggleSettings);
             tray.ShowSettingsRequested += () => Post(ShowSettings);
-            tray.QuitRequested += () => Post(Quit);
+            tray.ContextMenuRequested += (x, y) => Post(() => (trayMenu ??= new TrayMenu(this)).ShowAt(x, y));
             tray.MessageReceived += (msg, wParam, lParam) =>
             {
                 bool handled = false;
@@ -118,6 +119,10 @@ namespace RoundedTB
 
             taskbarDetails = Taskbar.GenerateTaskbarInfo(isWindows11);
             ApplySettingsNow();
+            if (activeSettings.RemoveInsiderWatermark)
+            {
+                SyncWatermarkState();
+            }
 
             if (!activeSettings.IsNotFirstLaunch)
             {
@@ -233,6 +238,12 @@ namespace RoundedTB
             interaction.WriteJSON();
         }
 
+        public void ToggleTray()
+        {
+            activeSettings.ShowTray = !activeSettings.ShowTray;
+            SettingsChangedExternally();
+        }
+
         /// <summary>Settings changed outside the flyout (the Win+F2 hotkey).</summary>
         public void SettingsChangedExternally()
         {
@@ -284,6 +295,54 @@ namespace RoundedTB
                         Interaction.SetWorkspace(workArea);
                     }
                 }
+            }
+        }
+
+        #endregion
+
+        #region Insider watermark
+
+        // The toggle, startup and Explorer recovery can all ask at once; the patch (symbol download,
+        // dbghelp, a cross-process write) runs on its own thread, one at a time.
+        private int watermarkBusy;
+
+        /// <summary>Patches or restores Explorer to match RemoveInsiderWatermark, off the UI thread.</summary>
+        public void SyncWatermarkState(int initialDelayMs = 0)
+        {
+            if (Interlocked.CompareExchange(ref watermarkBusy, 1, 0) != 0)
+            {
+                return;
+            }
+            bool enable = activeSettings.RemoveInsiderWatermark;
+            Task.Run(() =>
+            {
+                try
+                {
+                    if (initialDelayMs > 0)
+                    {
+                        Thread.Sleep(initialDelayMs);
+                    }
+                    void Log(string message) => interaction.AddLog($"Watermark: {message}");
+                    WatermarkRemover.Result result = enable ? WatermarkRemover.Apply(Log) : WatermarkRemover.Restore(Log);
+                    Dispatcher.TryEnqueue(() => flyout?.SetWatermarkStatus(result.Message));
+                }
+                catch (Exception ex)
+                {
+                    interaction.AddLog($"Watermark: {ex.Message}");
+                }
+                finally
+                {
+                    Interlocked.Exchange(ref watermarkBusy, 0);
+                }
+            });
+        }
+
+        /// <summary>The patch lives in Explorer's memory, so it has to be re-applied after Explorer restarts.</summary>
+        public void OnExplorerRecovered()
+        {
+            if (activeSettings.RemoveInsiderWatermark)
+            {
+                SyncWatermarkState(initialDelayMs: 1500);
             }
         }
 

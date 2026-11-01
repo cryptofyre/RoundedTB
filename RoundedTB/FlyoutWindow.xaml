@@ -129,15 +129,17 @@
                             <ContentControl Style="{StaticResource Logo}" Width="36" Height="36" HorizontalAlignment="Left" VerticalAlignment="Center"
                                             ToolTipService.ToolTip="RoundedTB" />
                             <toolkit:Segmented x:Name="ModeSegmented" HorizontalAlignment="Right" SelectionChanged="Mode_SelectionChanged">
-                                <toolkit:SegmentedItem Content="Basic">
-                                    <toolkit:SegmentedItem.Icon>
-                                        <FontIcon Glyph="&#xE75B;" />
-                                    </toolkit:SegmentedItem.Icon>
+                                <toolkit:SegmentedItem>
+                                    <StackPanel Orientation="Horizontal" Spacing="8">
+                                        <FontIcon Glyph="&#xE75B;" FontSize="14" />
+                                        <TextBlock Text="Basic" />
+                                    </StackPanel>
                                 </toolkit:SegmentedItem>
-                                <toolkit:SegmentedItem Content="Dynamic">
-                                    <toolkit:SegmentedItem.Icon>
-                                        <FontIcon Glyph="&#xF246;" />
-                                    </toolkit:SegmentedItem.Icon>
+                                <toolkit:SegmentedItem>
+                                    <StackPanel Orientation="Horizontal" Spacing="8">
+                                        <FontIcon Glyph="&#xF246;" FontSize="14" />
+                                        <TextBlock Text="Dynamic" />
+                                    </StackPanel>
                                 </toolkit:SegmentedItem>
                             </toolkit:Segmented>
                         </Grid>
@@ -305,6 +307,15 @@
                                     <TextBlock Text="Auto-hide the taskbar" VerticalAlignment="Center" TextWrapping="Wrap" />
                                     <ToggleSwitch x:Name="AutoHideToggle" Style="{StaticResource RowSwitch}" Toggled="Toggle_Toggled" />
                                 </Grid>
+
+                                <TextBlock Style="{StaticResource Strong}" Text="Insider watermark" Margin="0,12,0,4" />
+                                <Grid Style="{StaticResource Row}">
+                                    <Grid.ColumnDefinitions><ColumnDefinition /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                                    <TextBlock Text="Remove the build watermark" VerticalAlignment="Center" TextWrapping="Wrap" />
+                                    <ToggleSwitch x:Name="WatermarkToggle" Style="{StaticResource RowSwitch}" Toggled="Watermark_Toggled" />
+                                </Grid>
+                                <TextBlock x:Name="WatermarkStatus" Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                           TextWrapping="Wrap" Margin="0,6,0,0" Visibility="Collapsed" />
                             </StackPanel>
                         </Border>
                     </StackPanel>

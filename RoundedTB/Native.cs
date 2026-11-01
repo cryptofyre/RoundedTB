@@ -72,14 +72,12 @@ namespace RoundedTB
         public delegate IntPtr WndProc(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam);
         public delegate IntPtr SubclassProc(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam, nuint id, IntPtr refData);
 
-        public const uint WM_NULL = 0x0000, WM_CONTEXTMENU = 0x007B, WM_NCCALCSIZE = 0x0083, WM_USER = 0x0400;
+        public const uint WM_CONTEXTMENU = 0x007B, WM_NCCALCSIZE = 0x0083, WM_USER = 0x0400;
         public const uint NIN_SELECT = WM_USER, NIN_KEYSELECT = WM_USER + 1;
         public const uint NIM_ADD = 0, NIM_MODIFY = 1, NIM_DELETE = 2, NIM_SETVERSION = 4;
         public const uint NIF_MESSAGE = 0x1, NIF_ICON = 0x2, NIF_TIP = 0x4, NIF_SHOWTIP = 0x80;
         public const uint NOTIFYICON_VERSION_4 = 4;
         public const uint IMAGE_ICON = 1, LR_LOADFROMFILE = 0x10;
-        public const uint MF_STRING = 0, MF_SEPARATOR = 0x800;
-        public const uint TPM_RETURNCMD = 0x100, TPM_RIGHTBUTTON = 0x2, TPM_BOTTOMALIGN = 0x20;
         public const uint MONITOR_DEFAULTTONEAREST = 2;
         public const uint MOD_WIN = 0x8, VK_F2 = 0x71;
         public const int GWL_EXSTYLE = -20;
@@ -148,20 +146,6 @@ namespace RoundedTB
 
         [DllImport("shell32.dll", EntryPoint = "Shell_NotifyIconW", CharSet = CharSet.Unicode)]
         public static extern bool Shell_NotifyIcon(uint message, ref NOTIFYICONDATA data);
-
-        [LibraryImport("user32.dll")]
-        public static partial IntPtr CreatePopupMenu();
-
-        [LibraryImport("user32.dll", EntryPoint = "AppendMenuW", StringMarshalling = StringMarshalling.Utf16)]
-        [return: MarshalAs(UnmanagedType.Bool)]
-        public static partial bool AppendMenu(IntPtr menu, uint flags, nuint id, string text);
-
-        [LibraryImport("user32.dll")]
-        public static partial int TrackPopupMenuEx(IntPtr menu, uint flags, int x, int y, IntPtr hWnd, IntPtr tpm);
-
-        [LibraryImport("user32.dll")]
-        [return: MarshalAs(UnmanagedType.Bool)]
-        public static partial bool DestroyMenu(IntPtr menu);
 
         [LibraryImport("user32.dll")]
         [return: MarshalAs(UnmanagedType.Bool)]
