@@ -8,47 +8,89 @@
 
     <Grid x:Name="Root" Background="Transparent">
         <Grid.Resources>
-            <!-- ToggleSwitch reserves 154px for On/Off text even when there is none. -->
-            <x:Double x:Key="ToggleSwitchThemeMinWidth">0</x:Double>
-            <Style x:Key="Card" TargetType="Border">
-                <Setter Property="Background" Value="{ThemeResource CardBackgroundFillColorDefaultBrush}" />
-                <Setter Property="BorderBrush" Value="{ThemeResource CardStrokeColorDefaultBrush}" />
-                <Setter Property="BorderThickness" Value="1" />
-                <Setter Property="CornerRadius" Value="{StaticResource OverlayCornerRadius}" />
-                <Setter Property="Padding" Value="14,10,14,12" />
-            </Style>
-            <Style x:Key="SectionHeader" TargetType="TextBlock" BasedOn="{StaticResource BodyStrongTextBlockStyle}">
-                <Setter Property="Margin" Value="2,16,0,8" />
-            </Style>
-            <Style x:Key="Value" TargetType="TextBlock" BasedOn="{StaticResource CaptionTextBlockStyle}">
-                <Setter Property="Foreground" Value="{ThemeResource TextFillColorSecondaryBrush}" />
-                <Setter Property="HorizontalAlignment" Value="Right" />
-                <Setter Property="VerticalAlignment" Value="Center" />
-            </Style>
-            <Style x:Key="Body" TargetType="TextBlock" BasedOn="{StaticResource BodyTextBlockStyle}">
-                <Setter Property="TextWrapping" Value="Wrap" />
-            </Style>
-            <Style x:Key="Secondary" TargetType="TextBlock" BasedOn="{StaticResource BodyTextBlockStyle}">
-                <Setter Property="TextWrapping" Value="Wrap" />
-                <Setter Property="Foreground" Value="{ThemeResource TextFillColorSecondaryBrush}" />
-            </Style>
-            <Style x:Key="Row" TargetType="Grid">
-                <Setter Property="ColumnSpacing" Value="12" />
-            </Style>
-            <Style x:Key="RowSwitch" TargetType="ToggleSwitch">
-                <Setter Property="OnContent" Value="" />
-                <Setter Property="OffContent" Value="" />
-                <Setter Property="MinWidth" Value="0" />
-                <!-- Clip the space the template keeps for On/Off text. -->
-                <Setter Property="Width" Value="44" />
-                <Setter Property="Grid.Column" Value="1" />
-                <Setter Property="HorizontalAlignment" Value="Right" />
-            </Style>
-            <Style x:Key="LinkRow" TargetType="HyperlinkButton">
-                <Setter Property="HorizontalAlignment" Value="Stretch" />
-                <Setter Property="HorizontalContentAlignment" Value="Left" />
-                <Setter Property="Margin" Value="-12,0" />
-            </Style>
+            <ResourceDictionary>
+                <ResourceDictionary.ThemeDictionaries>
+                    <ResourceDictionary x:Key="Light">
+                        <SolidColorBrush x:Key="LogoBaseBrush" Color="{ThemeResource SystemAccentColorDark2}" />
+                    </ResourceDictionary>
+                    <ResourceDictionary x:Key="Dark">
+                        <SolidColorBrush x:Key="LogoBaseBrush" Color="{ThemeResource SystemAccentColor}" />
+                    </ResourceDictionary>
+                </ResourceDictionary.ThemeDictionaries>
+
+                <!-- ToggleSwitch reserves 154px for On/Off text even when there is none. -->
+                <x:Double x:Key="ToggleSwitchThemeMinWidth">0</x:Double>
+                <Style x:Key="Card" TargetType="Border">
+                    <Setter Property="Background" Value="{ThemeResource CardBackgroundFillColorDefaultBrush}" />
+                    <Setter Property="BorderBrush" Value="{ThemeResource CardStrokeColorDefaultBrush}" />
+                    <Setter Property="BorderThickness" Value="1" />
+                    <Setter Property="CornerRadius" Value="{StaticResource OverlayCornerRadius}" />
+                    <Setter Property="Padding" Value="14,10,14,12" />
+                </Style>
+                <!-- The RoundedTB mark: a rounded tile with an R sitting on a taskbar, in the accent colours. -->
+                <Style x:Key="Logo" TargetType="ContentControl">
+                    <Setter Property="IsTabStop" Value="False" />
+                    <Setter Property="Template">
+                        <Setter.Value>
+                            <ControlTemplate TargetType="ContentControl">
+                                <Viewbox Stretch="Uniform">
+                                    <Canvas Width="32" Height="32">
+                                        <Rectangle Canvas.Left="6.5" Canvas.Top="3.5" Width="19" Height="19" RadiusX="3.5" RadiusY="3.5"
+                                                   Fill="{ThemeResource AccentFillColorDefaultBrush}" />
+                                        <TextBlock Canvas.Left="6.5" Canvas.Top="3" Width="19" TextAlignment="Center" Text="R" FontSize="12.5"
+                                                   FontWeight="Bold" FontFamily="Segoe UI Variable Display"
+                                                   Foreground="{ThemeResource TextOnAccentFillColorPrimaryBrush}" />
+                                        <Rectangle Canvas.Left="1.5" Canvas.Top="17" Width="29" Height="11" RadiusX="3" RadiusY="3"
+                                                   Fill="{ThemeResource LogoBaseBrush}" />
+                                    </Canvas>
+                                </Viewbox>
+                            </ControlTemplate>
+                        </Setter.Value>
+                    </Setter>
+                </Style>
+                <Style x:Key="SectionHeader" TargetType="TextBlock" BasedOn="{StaticResource BodyStrongTextBlockStyle}">
+                    <Setter Property="Margin" Value="2,16,0,8" />
+                </Style>
+                <Style x:Key="SectionHeaderPanel" TargetType="StackPanel">
+                    <Setter Property="Orientation" Value="Horizontal" />
+                    <Setter Property="Spacing" Value="8" />
+                    <Setter Property="Margin" Value="2,16,0,8" />
+                </Style>
+                <Style x:Key="SectionIcon" TargetType="FontIcon">
+                    <Setter Property="FontSize" Value="14" />
+                    <Setter Property="Foreground" Value="{ThemeResource AccentTextFillColorPrimaryBrush}" />
+                    <Setter Property="VerticalAlignment" Value="Center" />
+                </Style>
+                <Style x:Key="Value" TargetType="TextBlock" BasedOn="{StaticResource CaptionTextBlockStyle}">
+                    <Setter Property="Foreground" Value="{ThemeResource TextFillColorSecondaryBrush}" />
+                    <Setter Property="HorizontalAlignment" Value="Right" />
+                    <Setter Property="VerticalAlignment" Value="Center" />
+                </Style>
+                <Style x:Key="Body" TargetType="TextBlock" BasedOn="{StaticResource BodyTextBlockStyle}">
+                    <Setter Property="TextWrapping" Value="Wrap" />
+                </Style>
+                <Style x:Key="Secondary" TargetType="TextBlock" BasedOn="{StaticResource BodyTextBlockStyle}">
+                    <Setter Property="TextWrapping" Value="Wrap" />
+                    <Setter Property="Foreground" Value="{ThemeResource TextFillColorSecondaryBrush}" />
+                </Style>
+                <Style x:Key="Row" TargetType="Grid">
+                    <Setter Property="ColumnSpacing" Value="12" />
+                </Style>
+                <Style x:Key="RowSwitch" TargetType="ToggleSwitch">
+                    <Setter Property="OnContent" Value="" />
+                    <Setter Property="OffContent" Value="" />
+                    <Setter Property="MinWidth" Value="0" />
+                    <!-- Clip the space the template keeps for On/Off text. -->
+                    <Setter Property="Width" Value="44" />
+                    <Setter Property="Grid.Column" Value="1" />
+                    <Setter Property="HorizontalAlignment" Value="Right" />
+                </Style>
+                <Style x:Key="LinkRow" TargetType="HyperlinkButton">
+                    <Setter Property="HorizontalAlignment" Value="Stretch" />
+                    <Setter Property="HorizontalContentAlignment" Value="Left" />
+                    <Setter Property="Margin" Value="-12,0" />
+                </Style>
+            </ResourceDictionary>
         </Grid.Resources>
 
         <Grid x:Name="Panel"
@@ -63,18 +105,26 @@
             <ScrollViewer x:Name="SettingsPage" HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
                 <StackPanel x:Name="SettingsStack" Padding="16,14,16,16">
                     <Grid>
-                        <Border Width="32" Height="32" CornerRadius="8" HorizontalAlignment="Left" VerticalAlignment="Center"
-                                Background="{ThemeResource AccentFillColorDefaultBrush}">
-                            <TextBlock Text="R" FontWeight="Bold" FontSize="15" HorizontalAlignment="Center" VerticalAlignment="Center"
-                                       Foreground="{ThemeResource TextOnAccentFillColorPrimaryBrush}" />
-                        </Border>
+                        <ContentControl Style="{StaticResource Logo}" Width="36" Height="36" HorizontalAlignment="Left" VerticalAlignment="Center"
+                                        ToolTipService.ToolTip="RoundedTB" />
                         <toolkit:Segmented x:Name="ModeSegmented" HorizontalAlignment="Right" SelectionChanged="Mode_SelectionChanged">
-                            <toolkit:SegmentedItem Content="Basic" />
-                            <toolkit:SegmentedItem Content="Dynamic" />
+                            <toolkit:SegmentedItem Content="Basic">
+                                <toolkit:SegmentedItem.Icon>
+                                    <FontIcon Glyph="&#xE75B;" />
+                                </toolkit:SegmentedItem.Icon>
+                            </toolkit:SegmentedItem>
+                            <toolkit:SegmentedItem Content="Dynamic">
+                                <toolkit:SegmentedItem.Icon>
+                                    <FontIcon Glyph="&#xF246;" />
+                                </toolkit:SegmentedItem.Icon>
+                            </toolkit:SegmentedItem>
                         </toolkit:Segmented>
                     </Grid>
 
-                    <TextBlock Style="{StaticResource SectionHeader}" Text="Shape" />
+                    <StackPanel Style="{StaticResource SectionHeaderPanel}">
+                        <FontIcon Style="{StaticResource SectionIcon}" Glyph="&#xEB3C;" />
+                        <TextBlock Style="{StaticResource BodyStrongTextBlockStyle}" Text="Shape" />
+                    </StackPanel>
                     <Border Style="{StaticResource Card}">
                         <StackPanel>
                             <Grid>
@@ -115,7 +165,10 @@
                     </Border>
 
                     <StackPanel x:Name="SegmentsSection">
-                        <TextBlock Style="{StaticResource SectionHeader}" Text="Segments" />
+                        <StackPanel Style="{StaticResource SectionHeaderPanel}">
+                            <FontIcon Style="{StaticResource SectionIcon}" Glyph="&#xE8A9;" />
+                            <TextBlock Style="{StaticResource BodyStrongTextBlockStyle}" Text="Segments" />
+                        </StackPanel>
                         <Border Style="{StaticResource Card}">
                             <StackPanel>
                                 <Grid Style="{StaticResource Row}">
@@ -137,7 +190,10 @@
                         </Border>
                     </StackPanel>
 
-                    <TextBlock Style="{StaticResource SectionHeader}" Text="Behaviour" />
+                    <StackPanel Style="{StaticResource SectionHeaderPanel}">
+                        <FontIcon Style="{StaticResource SectionIcon}" Glyph="&#xE9E9;" />
+                        <TextBlock Style="{StaticResource BodyStrongTextBlockStyle}" Text="Behaviour" />
+                    </StackPanel>
                     <Border Style="{StaticResource Card}">
                         <StackPanel>
                             <Grid Style="{StaticResource Row}">
@@ -161,7 +217,7 @@
                     <Expander x:Name="AdvancedExpander" Margin="0,16,0,0" HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch">
                         <Expander.Header>
                             <StackPanel Orientation="Horizontal" Spacing="10">
-                                <FontIcon Glyph="&#xE9F5;" FontSize="16" />
+                                <FontIcon Style="{StaticResource SectionIcon}" Glyph="&#xE9F5;" />
                                 <TextBlock Text="Advanced" VerticalAlignment="Center" />
                             </StackPanel>
                         </Expander.Header>
@@ -228,7 +284,10 @@
             <!-- Help & about -->
             <ScrollViewer x:Name="AboutPage" Visibility="Collapsed" HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
                 <StackPanel x:Name="AboutStack" Padding="16,14,16,16">
-                    <TextBlock Text="RoundedTB" Style="{StaticResource SubtitleTextBlockStyle}" />
+                    <StackPanel Orientation="Horizontal" Spacing="12">
+                        <ContentControl Style="{StaticResource Logo}" Width="48" Height="48" VerticalAlignment="Center" />
+                        <TextBlock Text="RoundedTB" Style="{StaticResource TitleTextBlockStyle}" VerticalAlignment="Center" />
+                    </StackPanel>
                     <toolkit:Segmented x:Name="AboutTabs" Margin="0,12,0,0" HorizontalAlignment="Stretch" SelectionChanged="AboutTabs_SelectionChanged">
                         <toolkit:SegmentedItem Content="About" />
                         <toolkit:SegmentedItem Content="Help" />
@@ -286,17 +345,47 @@
                     <StackPanel x:Name="LinksTabPanel" Margin="0,12,0,0" Visibility="Collapsed">
                         <Border Style="{StaticResource Card}">
                             <StackPanel>
-                                <HyperlinkButton Style="{StaticResource LinkRow}" Content="README and setup" NavigateUri="https://github.com/cryptofyre/RoundedTB#readme" />
-                                <HyperlinkButton Style="{StaticResource LinkRow}" Content="Report an issue" NavigateUri="https://github.com/cryptofyre/RoundedTB/issues" />
-                                <HyperlinkButton Style="{StaticResource LinkRow}" Content="Latest releases" NavigateUri="https://github.com/cryptofyre/RoundedTB/releases" />
-                                <HyperlinkButton Style="{StaticResource LinkRow}" Content="Original RoundedTB project" NavigateUri="https://github.com/RoundedTB/RoundedTB" />
+                                <HyperlinkButton Style="{StaticResource LinkRow}" NavigateUri="https://github.com/cryptofyre/RoundedTB#readme">
+                                    <StackPanel Orientation="Horizontal" Spacing="10">
+                                        <FontIcon Glyph="&#xE8A5;" FontSize="16" />
+                                        <TextBlock Text="README and setup" />
+                                    </StackPanel>
+                                </HyperlinkButton>
+                                <HyperlinkButton Style="{StaticResource LinkRow}" NavigateUri="https://github.com/cryptofyre/RoundedTB/issues">
+                                    <StackPanel Orientation="Horizontal" Spacing="10">
+                                        <FontIcon Glyph="&#xEBE8;" FontSize="16" />
+                                        <TextBlock Text="Report an issue" />
+                                    </StackPanel>
+                                </HyperlinkButton>
+                                <HyperlinkButton Style="{StaticResource LinkRow}" NavigateUri="https://github.com/cryptofyre/RoundedTB/releases">
+                                    <StackPanel Orientation="Horizontal" Spacing="10">
+                                        <FontIcon Glyph="&#xE896;" FontSize="16" />
+                                        <TextBlock Text="Latest releases" />
+                                    </StackPanel>
+                                </HyperlinkButton>
+                                <HyperlinkButton Style="{StaticResource LinkRow}" NavigateUri="https://github.com/RoundedTB/RoundedTB">
+                                    <StackPanel Orientation="Horizontal" Spacing="10">
+                                        <FontIcon Glyph="&#xE774;" FontSize="16" />
+                                        <TextBlock Text="Original RoundedTB project" />
+                                    </StackPanel>
+                                </HyperlinkButton>
                             </StackPanel>
                         </Border>
                         <TextBlock Style="{StaticResource SectionHeader}" Text="Troubleshooting" />
                         <Border Style="{StaticResource Card}">
                             <StackPanel>
-                                <HyperlinkButton Style="{StaticResource LinkRow}" Content="Open settings file" Click="OpenConfig_Click" />
-                                <HyperlinkButton Style="{StaticResource LinkRow}" Content="Open settings folder" Click="OpenSettingsFolder_Click" />
+                                <HyperlinkButton Style="{StaticResource LinkRow}" Click="OpenConfig_Click">
+                                    <StackPanel Orientation="Horizontal" Spacing="10">
+                                        <FontIcon Glyph="&#xE8E5;" FontSize="16" />
+                                        <TextBlock Text="Open settings file" />
+                                    </StackPanel>
+                                </HyperlinkButton>
+                                <HyperlinkButton Style="{StaticResource LinkRow}" Click="OpenSettingsFolder_Click">
+                                    <StackPanel Orientation="Horizontal" Spacing="10">
+                                        <FontIcon Glyph="&#xE838;" FontSize="16" />
+                                        <TextBlock Text="Open settings folder" />
+                                    </StackPanel>
+                                </HyperlinkButton>
                             </StackPanel>
                         </Border>
                     </StackPanel>
