@@ -10,6 +10,9 @@ name: release
 # Signing uses Azure Artifact Signing through the `sign` CLI and is skipped when its secrets are
 # missing: ARTIFACT_SIGNING_ENDPOINT / _ACCOUNT / _PROFILE and AZURE_TENANT_ID / _CLIENT_ID /
 # _CLIENT_SECRET. MSIX packages only install signed, so without them only the zips are released.
+#
+# Keep the secrets in the `release` environment, limited to v* and canary* tags, so no other
+# ref's workflow can read them. They are only ever given to the signing steps, never to a build.
 on:
   push:
     tags:
@@ -23,20 +26,15 @@ on:
         default: 'canary-test'
 
 permissions:
-  contents: write   # required to create the release; the default read gives 403
+  contents: read
 
 env:
   SIGN_VERSION: 0.9.1-beta.26227.3
-  ARTIFACT_SIGNING_ENDPOINT: ${{ secrets.ARTIFACT_SIGNING_ENDPOINT }}
-  ARTIFACT_SIGNING_ACCOUNT: ${{ secrets.ARTIFACT_SIGNING_ACCOUNT }}
-  ARTIFACT_SIGNING_PROFILE: ${{ secrets.ARTIFACT_SIGNING_PROFILE }}
-  AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
-  AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
-  AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
 
 jobs:
   version:
     runs-on: ubuntu-latest
+    environment: release
     outputs:
       tag: ${{ steps.ver.outputs.tag }}
       version: ${{ steps.ver.outputs.version }}
@@ -47,19 +45,27 @@ jobs:
       - name: Resolve tag and version
         id: ver
         shell: pwsh
+        env:
+          EVENT: ${{ github.event_name }}
+          INPUT_TAG: ${{ inputs.tag }}
+          REF_NAME: ${{ github.ref_name }}
+          RUN_NUMBER: ${{ github.run_number }}
+          HAS_SIGNING: ${{ secrets.ARTIFACT_SIGNING_ENDPOINT != '' }}
         run: |
-          $tag = if ('${{ github.event_name }}' -eq 'workflow_dispatch') { '${{ inputs.tag }}' } else { '${{ github.ref_name }}' }
+          $tag = if ($env:EVENT -eq 'workflow_dispatch') { $env:INPUT_TAG } else { $env:REF_NAME }
+          if ($tag -notmatch '^[A-Za-z0-9._-]+$') { throw "Unsupported tag name: $tag" }
           $stable = $tag -match '^v(\d+)\.(\d+)\.(\d+)$'
-          $version = if ($stable) { "$($Matches[1]).$($Matches[2]).$($Matches[3]).0" } else { "0.0.${{ github.run_number }}.0" }
+          $version = if ($stable) { "$($Matches[1]).$($Matches[2]).$($Matches[3]).0" } else { "0.0.$env:RUN_NUMBER.0" }
           "tag=$tag" >> $env:GITHUB_OUTPUT
           "version=$version" >> $env:GITHUB_OUTPUT
           "stable=$($stable.ToString().ToLower())" >> $env:GITHUB_OUTPUT
-          "signed=$(($env:ARTIFACT_SIGNING_ENDPOINT -ne '').ToString().ToLower())" >> $env:GITHUB_OUTPUT
+          "signed=$($env:HAS_SIGNING.ToLower())" >> $env:GITHUB_OUTPUT
 
   build:
     name: build-${{ matrix.rid }}
     needs: version
     runs-on: windows-latest
+    environment: release
     env:
       TAG: ${{ needs.version.outputs.tag }}
       VERSION: ${{ needs.version.outputs.version }}
@@ -73,10 +79,12 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
 
       - name: Set up .NET
-        uses: actions/setup-dotnet@v4
+        uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4
         with:
           dotnet-version: |
             8.0.x
@@ -98,6 +106,13 @@ jobs:
       - name: Sign binaries
         if: needs.version.outputs.signed == 'true'
         shell: pwsh
+        env:
+          ARTIFACT_SIGNING_ENDPOINT: ${{ secrets.ARTIFACT_SIGNING_ENDPOINT }}
+          ARTIFACT_SIGNING_ACCOUNT: ${{ secrets.ARTIFACT_SIGNING_ACCOUNT }}
+          ARTIFACT_SIGNING_PROFILE: ${{ secrets.ARTIFACT_SIGNING_PROFILE }}
+          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
         run: >
           & "${{ runner.temp }}/sign-tool/sign.exe" code artifact-signing
           --artifact-signing-endpoint $env:ARTIFACT_SIGNING_ENDPOINT
@@ -132,7 +147,7 @@ jobs:
           Get-ChildItem msix -Recurse -Filter *.msix | Copy-Item -Destination "packages/RoundedTB_${{ matrix.rid }}.msix"
 
       - name: Upload archive
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: zip-${{ matrix.rid }}
           path: RoundedTB_*_${{ matrix.rid }}.zip
@@ -140,7 +155,7 @@ jobs:
 
       - name: Upload package
         if: needs.version.outputs.signed == 'true'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: msix-${{ matrix.rid }}
           path: packages/*.msix
@@ -150,16 +165,19 @@ jobs:
     needs: [version, build]
     if: needs.version.outputs.signed == 'true'
     runs-on: windows-latest
+    environment: release
     env:
       TAG: ${{ needs.version.outputs.tag }}
       VERSION: ${{ needs.version.outputs.version }}
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
 
       - name: Set up .NET
-        uses: actions/setup-dotnet@v4
+        uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4
         with:
           dotnet-version: 8.0.x
 
@@ -167,7 +185,7 @@ jobs:
         run: dotnet tool update sign --tool-path "${{ runner.temp }}/sign-tool" --version ${{ env.SIGN_VERSION }}
 
       - name: Download packages
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           pattern: msix-*
           path: packages
@@ -183,6 +201,13 @@ jobs:
 
       - name: Sign bundle
         shell: pwsh
+        env:
+          ARTIFACT_SIGNING_ENDPOINT: ${{ secrets.ARTIFACT_SIGNING_ENDPOINT }}
+          ARTIFACT_SIGNING_ACCOUNT: ${{ secrets.ARTIFACT_SIGNING_ACCOUNT }}
+          ARTIFACT_SIGNING_PROFILE: ${{ secrets.ARTIFACT_SIGNING_PROFILE }}
+          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
         run: >
           & "${{ runner.temp }}/sign-tool/sign.exe" code artifact-signing
           --artifact-signing-endpoint $env:ARTIFACT_SIGNING_ENDPOINT
@@ -197,10 +222,12 @@ jobs:
       - name: Write .appinstaller
         if: needs.version.outputs.stable == 'true'
         shell: pwsh
+        env:
+          REPOSITORY: ${{ github.repository }}
         run: |
           [xml]$manifest = Get-Content RoundedTB/Package.appxmanifest
           $identity = $manifest.Package.Identity
-          $base = "https://github.com/${{ github.repository }}/releases"
+          $base = "https://github.com/$env:REPOSITORY/releases"
           @"
           <?xml version="1.0" encoding="utf-8"?>
           <AppInstaller xmlns="http://schemas.microsoft.com/appx/appinstaller/2018" Version="$env:VERSION" Uri="$base/latest/download/RoundedTB.appinstaller">
@@ -213,7 +240,7 @@ jobs:
           "@ | Set-Content out/RoundedTB.appinstaller -Encoding utf8
 
       - name: Upload bundle
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: bundle
           path: out/*
@@ -224,17 +251,19 @@ jobs:
     needs: [version, build, bundle]
     if: ${{ !cancelled() && needs.build.result == 'success' && needs.bundle.result != 'failure' }}
     runs-on: ubuntu-latest
+    permissions:
+      contents: write   # creating the release; everything else stays read-only
     env:
       TAG: ${{ needs.version.outputs.tag }}
 
     steps:
       - name: Download artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           merge-multiple: true
 
       - name: Create release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
         with:
           tag_name: ${{ env.TAG }}
           draft: ${{ github.event_name == 'workflow_dispatch' }}
