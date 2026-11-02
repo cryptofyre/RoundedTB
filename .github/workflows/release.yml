@@ -4,7 +4,7 @@ name: release
 # one that runs on every push, and it stays build-verification only.
 #
 #   v*         -> published release, with the auto-updating .appinstaller
-#   canary*    -> published pre-release
+#   canary*    -> published pre-release, as is any v* tag that isn't exactly vX.Y.Z
 #   manual run -> draft release, for checking the artifacts before anything goes public
 #
 # Signing uses Azure Artifact Signing through the `sign` CLI and is skipped when its secrets are
@@ -267,7 +267,7 @@ jobs:
         with:
           tag_name: ${{ env.TAG }}
           draft: ${{ github.event_name == 'workflow_dispatch' }}
-          prerelease: ${{ startsWith(env.TAG, 'canary') }}
+          prerelease: ${{ needs.version.outputs.stable != 'true' }}
           generate_release_notes: true
           body: |
             | Download | For |
