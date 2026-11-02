@@ -131,8 +131,6 @@ jobs:
         if: needs.version.outputs.signed == 'true'
         shell: pwsh
         run: |
-          $manifest = 'RoundedTB/Package.appxmanifest'
-          (Get-Content $manifest -Raw) -replace '(<Identity[^>]*Version=")[^"]*', "`${1}$env:VERSION" | Set-Content $manifest -NoNewline
           dotnet publish RoundedTB/RoundedTB.csproj `
             -c Release -r ${{ matrix.rid }} -p:Platform=${{ matrix.platform }} `
             -p:PublishTrimmed=true `
@@ -145,6 +143,24 @@ jobs:
             -p:AppxPackageDir="$PWD/msix/"
           New-Item -ItemType Directory -Force packages | Out-Null
           Get-ChildItem msix -Recurse -Filter *.msix | Copy-Item -Destination "packages/RoundedTB_${{ matrix.rid }}.msix"
+
+      - name: Check versions match the tag
+        shell: pwsh
+        run: |
+          $exe = (Get-Item publish/RoundedTB/RoundedTB.exe).VersionInfo.FileVersion
+          if ($exe -ne $env:VERSION) { throw "RoundedTB.exe is $exe, expected $env:VERSION" }
+          $msix = Get-ChildItem packages -Filter *.msix | Select-Object -First 1
+          if ($msix) {
+            Add-Type -AssemblyName System.IO.Compression.FileSystem
+            $zip = [IO.Compression.ZipFile]::OpenRead($msix.FullName)
+            try {
+              $reader = [IO.StreamReader]::new($zip.GetEntry('AppxManifest.xml').Open())
+              $package = ([xml]$reader.ReadToEnd()).Package.Identity.Version
+              $reader.Dispose()
+            } finally { $zip.Dispose() }
+            if ($package -ne $env:VERSION) { throw "$($msix.Name) is $package, expected $env:VERSION" }
+          }
+          "RoundedTB $env:VERSION"
 
       - name: Upload archive
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4

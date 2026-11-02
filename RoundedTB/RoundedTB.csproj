@@ -5,6 +5,8 @@
     <TargetFramework>net10.0-windows10.0.22621.0</TargetFramework>
     <TargetPlatformMinVersion>10.0.19041.0</TargetPlatformMinVersion>
     <RootNamespace>RoundedTB</RootNamespace>
+    <!-- Releases override this with the tag's version; it also becomes the MSIX version. -->
+    <Version>3.2.0</Version>
     <UseWinUI>true</UseWinUI>
     <Nullable>annotations</Nullable>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
@@ -58,6 +60,20 @@
 
   <Target Name="BuildTap" BeforeTargets="BeforeBuild" Inputs="..\RoundedTB.Tap\Tap.cpp;..\RoundedTB.Tap\Tap.def;..\RoundedTB.Tap\build.cmd" Outputs="$(TapDll)">
     <Exec Command="&quot;$(MSBuildThisFileDirectory)..\RoundedTB.Tap\build.cmd&quot; $(TapArch)" />
+  </Target>
+
+  <Target Name="StampPackageVersion" BeforeTargets="_ValidatePresenceOfAppxManifestItems" Condition="'$(WindowsPackageType)' != 'None'">
+    <PropertyGroup>
+      <MsixVersion>$([System.Text.RegularExpressions.Regex]::Replace('$(Version)', '^(\d+\.\d+\.\d+)(-.*)?$', '$1.0'))</MsixVersion>
+      <StampedManifest>$(IntermediateOutputPath)Package.appxmanifest</StampedManifest>
+    </PropertyGroup>
+    <Copy SourceFiles="@(AppxManifest)" DestinationFiles="$(StampedManifest)" />
+    <XmlPoke XmlInputPath="$(StampedManifest)" Query="/m:Package/m:Identity/@Version" Value="$(MsixVersion)"
+             Namespaces="&lt;Namespace Prefix='m' Uri='http://schemas.microsoft.com/appx/manifest/foundation/windows10' /&gt;" />
+    <ItemGroup>
+      <AppxManifest Remove="@(AppxManifest)" />
+      <AppxManifest Include="$(StampedManifest)" />
+    </ItemGroup>
   </Target>
 
   <ItemGroup>
