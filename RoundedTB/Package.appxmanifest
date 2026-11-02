@@ -6,11 +6,12 @@
   xmlns:desktop="http://schemas.microsoft.com/appx/manifest/desktop/windows10"
   IgnorableNamespaces="uap rescap desktop">
 
-  <!-- Publisher must match the subject of the Azure Artifact Signing certificate. -->
+  <!-- Publisher must match the subject of the Azure Artifact Signing certificate. Version is
+       stamped from the project's Version at build time, so leave it at 0.0.0.0. -->
   <Identity
     Name="cryptofyre.RoundedTB"
     Publisher="CN=Elijah Klaumann, O=Elijah Klaumann, L=Lorena, S=tx, C=US"
-    Version="3.2.0.0" />
+    Version="0.0.0.0" />
 
   <Properties>
     <DisplayName>RoundedTB</DisplayName>
