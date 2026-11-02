@@ -1,0 +1,23 @@
+name: Feature request
+description: An idea for something RoundedTB could do.
+labels: [enhancement]
+body:
+  - type: textarea
+    id: idea
+    attributes:
+      label: What would you like?
+      description: Describe what you'd like your taskbar or RoundedTB to do.
+    validations:
+      required: true
+
+  - type: textarea
+    id: why
+    attributes:
+      label: Why?
+      description: What are you trying to do that RoundedTB doesn't let you do today?
+
+  - type: textarea
+    id: mockup
+    attributes:
+      label: Mock-up or example
+      description: A sketch, screenshot or example from another app, if you have one.

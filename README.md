@@ -45,6 +45,10 @@ Download the portable zip for your PC from the [latest release](https://github.c
 
 If the taskbar ever looks wrong, quit RoundedTB from its tray icon, or press <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>Esc</kbd> and restart Windows Explorer. RoundedTB makes no permanent changes, so that always puts things back.
 
+## Contributing
+
+Found a bug or have an idea? [Open an issue](https://github.com/cryptofyre/RoundedTB/issues/new/choose). To work on RoundedTB yourself, see the [contribution guidelines](.github/CONTRIBUTING.md).
+
 ## Credits
 
 RoundedTB was created by [torchgm](https://github.com/torchgm); see the [original project](https://github.com/RoundedTB/RoundedTB). This version builds on the maintenance work in [Gniang/RoundedTB](https://github.com/Gniang/RoundedTB), and the watermark remover is a port of [UWD2](https://github.com/machineonamission/uwd2) by Melody.

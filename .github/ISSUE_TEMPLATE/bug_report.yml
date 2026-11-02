@@ -1,0 +1,87 @@
+name: Bug report
+description: Something about the taskbar or RoundedTB isn't working right.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting this. Please check the [known issues](https://github.com/cryptofyre/RoundedTB#known-issues) and search existing issues first.
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: What went wrong, and what you expected instead.
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Switch to Dynamic mode
+        2. Open an app
+        3. ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: screenshot
+    attributes:
+      label: Screenshot
+      description: A screenshot or recording of the taskbar when it goes wrong. You can paste or drag images in here.
+
+  - type: input
+    id: windows
+    attributes:
+      label: Windows version
+      description: Run `winver` and copy the version and OS build.
+      placeholder: 25H2, OS Build 26200.1234
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: RoundedTB version
+      description: Shown under Help & about.
+    validations:
+      required: true
+
+  - type: dropdown
+    id: install
+    attributes:
+      label: How did you install RoundedTB?
+      options:
+        - App installer / MSIX
+        - Portable zip
+        - Built it myself
+    validations:
+      required: true
+
+  - type: dropdown
+    id: mode
+    attributes:
+      label: Mode
+      options:
+        - Basic
+        - Dynamic
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: setup
+    attributes:
+      label: Your setup
+      options:
+        - label: More than one monitor
+        - label: Display scaling above 100%
+        - label: TranslucentTB or another taskbar tool is running
+
+  - type: textarea
+    id: crash-log
+    attributes:
+      label: Crash log
+      description: If RoundedTB crashed, paste the end of `crash.log` from `%LOCALAPPDATA%\RoundedTB`.
+      render: text
