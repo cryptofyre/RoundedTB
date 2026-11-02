@@ -16,6 +16,8 @@ namespace RoundedTB
 
         private const uint CallbackMessage = Native.WM_USER + 0x100;
         private const uint IconId = 1;
+        private const int SM_CXSMICON = 49;
+        private const uint WM_DISPLAYCHANGE = 0x007E, WM_DPICHANGED = 0x02E0;
 
         private readonly Native.WndProc wndProc;
         private readonly uint taskbarCreatedMessage;
@@ -80,12 +82,7 @@ namespace RoundedTB
 
         private void Add()
         {
-            if (icon != IntPtr.Zero)
-            {
-                Native.DestroyIcon(icon);
-            }
-            icon = LoadTrayIcon();
-
+            ReloadIcon();
             Native.NOTIFYICONDATA data = CreateData();
             data.uFlags = Native.NIF_MESSAGE | Native.NIF_ICON | Native.NIF_TIP | Native.NIF_SHOWTIP;
             data.uCallbackMessage = CallbackMessage;
@@ -95,12 +92,31 @@ namespace RoundedTB
             Native.Shell_NotifyIcon(Native.NIM_SETVERSION, ref data);
         }
 
-        private static IntPtr LoadTrayIcon()
+        /// <summary>Picks up a scaling change; the shell would otherwise stretch the old size.</summary>
+        private void RefreshIcon()
+        {
+            ReloadIcon();
+            Native.NOTIFYICONDATA data = CreateData();
+            data.uFlags = Native.NIF_ICON;
+            data.hIcon = icon;
+            Native.Shell_NotifyIcon(Native.NIM_MODIFY, ref data);
+        }
+
+        private void ReloadIcon()
+        {
+            if (icon != IntPtr.Zero)
+            {
+                Native.DestroyIcon(icon);
+            }
+            icon = LoadTrayIcon(Native.GetSystemMetricsForDpi(SM_CXSMICON, Native.GetDpiForWindow(Handle)));
+        }
+
+        private static IntPtr LoadTrayIcon(int size)
         {
             bool lightTaskbar = Registry.GetValue(
                 @"HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize", "SystemUsesLightTheme", 0) is int v && v == 1;
             string path = Path.Combine(AppContext.BaseDirectory, "res", lightTaskbar ? "TrayLight.ico" : "TrayDark.ico");
-            return Native.LoadImage(IntPtr.Zero, path, Native.IMAGE_ICON, 0, 0, Native.LR_LOADFROMFILE);
+            return Native.LoadImage(IntPtr.Zero, path, Native.IMAGE_ICON, size, size, Native.LR_LOADFROMFILE);
         }
 
         private IntPtr WindowProc(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam)
@@ -122,6 +138,10 @@ namespace RoundedTB
             {
                 Add();
                 return IntPtr.Zero;
+            }
+            if (msg == WM_DPICHANGED || msg == WM_DISPLAYCHANGE)
+            {
+                RefreshIcon();
             }
             if (msg == showSettingsMessage)
             {

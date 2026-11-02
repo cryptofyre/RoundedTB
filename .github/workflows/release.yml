@@ -3,9 +3,13 @@ name: release
 # Tag-driven only. A normal push must never reach this workflow - ci.yml is the
 # one that runs on every push, and it stays build-verification only.
 #
-#   v*         -> published release
+#   v*         -> published release, with the auto-updating .appinstaller
 #   canary*    -> published pre-release
 #   manual run -> draft release, for checking the artifacts before anything goes public
+#
+# Signing uses Azure Artifact Signing through the `sign` CLI and is skipped when its secrets are
+# missing: ARTIFACT_SIGNING_ENDPOINT / _ACCOUNT / _PROFILE and AZURE_TENANT_ID / _CLIENT_ID /
+# _CLIENT_SECRET. MSIX packages only install signed, so without them only the zips are released.
 on:
   push:
     tags:
@@ -21,13 +25,44 @@ on:
 permissions:
   contents: write   # required to create the release; the default read gives 403
 
+env:
+  SIGN_VERSION: 0.9.1-beta.26227.3
+  ARTIFACT_SIGNING_ENDPOINT: ${{ secrets.ARTIFACT_SIGNING_ENDPOINT }}
+  ARTIFACT_SIGNING_ACCOUNT: ${{ secrets.ARTIFACT_SIGNING_ACCOUNT }}
+  ARTIFACT_SIGNING_PROFILE: ${{ secrets.ARTIFACT_SIGNING_PROFILE }}
+  AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+  AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+  AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+
 jobs:
+  version:
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.ver.outputs.tag }}
+      version: ${{ steps.ver.outputs.version }}
+      stable: ${{ steps.ver.outputs.stable }}
+      signed: ${{ steps.ver.outputs.signed }}
+    steps:
+      # v1.2.3 -> 1.2.3.0; anything else (canaries, manual runs) -> 0.0.<run number>.0
+      - name: Resolve tag and version
+        id: ver
+        shell: pwsh
+        run: |
+          $tag = if ('${{ github.event_name }}' -eq 'workflow_dispatch') { '${{ inputs.tag }}' } else { '${{ github.ref_name }}' }
+          $stable = $tag -match '^v(\d+)\.(\d+)\.(\d+)$'
+          $version = if ($stable) { "$($Matches[1]).$($Matches[2]).$($Matches[3]).0" } else { "0.0.${{ github.run_number }}.0" }
+          "tag=$tag" >> $env:GITHUB_OUTPUT
+          "version=$version" >> $env:GITHUB_OUTPUT
+          "stable=$($stable.ToString().ToLower())" >> $env:GITHUB_OUTPUT
+          "signed=$(($env:ARTIFACT_SIGNING_ENDPOINT -ne '').ToString().ToLower())" >> $env:GITHUB_OUTPUT
+
   build:
     name: build-${{ matrix.rid }}
+    needs: version
     runs-on: windows-latest
     env:
-      MSIX_CERTIFICATE: ${{ secrets.MSIX_CERTIFICATE }}
-      MSIX_CERTIFICATE_PASSWORD: ${{ secrets.MSIX_CERTIFICATE_PASSWORD }}
+      TAG: ${{ needs.version.outputs.tag }}
+      VERSION: ${{ needs.version.outputs.version }}
     strategy:
       matrix:
         include:
@@ -43,104 +78,180 @@ jobs:
       - name: Set up .NET
         uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: '10.0.x'
+          dotnet-version: |
+            8.0.x
+            10.0.x
 
-      # v1.2.3 -> 1.2.3.0; anything else (canaries, manual runs) -> 0.0.<run number>.0
-      - name: Resolve tag and version
-        id: ver
-        shell: pwsh
-        run: |
-          $tag = if ('${{ github.event_name }}' -eq 'workflow_dispatch') { '${{ inputs.tag }}' } else { '${{ github.ref_name }}' }
-          $version = if ($tag -match '^v(\d+)\.(\d+)\.(\d+)$') { "$($Matches[1]).$($Matches[2]).$($Matches[3]).0" } else { "0.0.${{ github.run_number }}.0" }
-          "tag=$tag" >> $env:GITHUB_OUTPUT
-          "version=$version" >> $env:GITHUB_OUTPUT
+      - name: Install sign CLI
+        if: needs.version.outputs.signed == 'true'
+        run: dotnet tool update sign --tool-path "${{ runner.temp }}/sign-tool" --version ${{ env.SIGN_VERSION }}
 
       - name: Publish (unpackaged)
         run: >
           dotnet publish RoundedTB/RoundedTB.csproj
           -c Release -r ${{ matrix.rid }} -p:Platform=${{ matrix.platform }}
           -p:PublishTrimmed=true
-          -p:Version=${{ steps.ver.outputs.version }}
+          -p:Version=${{ env.VERSION }}
           -p:DebugType=none
           -o publish/RoundedTB
 
+      - name: Sign binaries
+        if: needs.version.outputs.signed == 'true'
+        shell: pwsh
+        run: >
+          & "${{ runner.temp }}/sign-tool/sign.exe" code artifact-signing
+          --artifact-signing-endpoint $env:ARTIFACT_SIGNING_ENDPOINT
+          --artifact-signing-account $env:ARTIFACT_SIGNING_ACCOUNT
+          --artifact-signing-certificate-profile $env:ARTIFACT_SIGNING_PROFILE
+          --file-digest SHA256 --timestamp-url http://timestamp.acs.microsoft.com/ --timestamp-digest SHA256
+          --base-directory publish/RoundedTB
+          RoundedTB.exe RoundedTB.dll RoundedTB.Tap.dll
+
       - name: Archive
         shell: pwsh
-        run: |
-          Compress-Archive -Path publish/RoundedTB -DestinationPath "RoundedTB_${{ steps.ver.outputs.tag }}_${{ matrix.rid }}.zip"
+        run: Compress-Archive -Path publish/RoundedTB -DestinationPath "RoundedTB_${env:TAG}_${{ matrix.rid }}.zip"
 
-      # MSIX needs a trusted signature to install, so it is only built when a certificate is configured:
-      # MSIX_CERTIFICATE (base64 .pfx) and MSIX_CERTIFICATE_PASSWORD. The certificate subject must match
-      # the Publisher in RoundedTB/Package.appxmanifest.
+      # Left unsigned: the bundle job combines both architectures and signs the bundle.
       - name: Publish (MSIX)
-        if: ${{ env.MSIX_CERTIFICATE != '' }}
+        if: needs.version.outputs.signed == 'true'
         shell: pwsh
         run: |
-          [IO.File]::WriteAllBytes("$PWD/signing.pfx", [Convert]::FromBase64String($env:MSIX_CERTIFICATE))
           $manifest = 'RoundedTB/Package.appxmanifest'
-          (Get-Content $manifest -Raw) -replace '(<Identity[^>]*Version=")[^"]*', "`${1}${{ steps.ver.outputs.version }}" | Set-Content $manifest -NoNewline
+          (Get-Content $manifest -Raw) -replace '(<Identity[^>]*Version=")[^"]*', "`${1}$env:VERSION" | Set-Content $manifest -NoNewline
           dotnet publish RoundedTB/RoundedTB.csproj `
             -c Release -r ${{ matrix.rid }} -p:Platform=${{ matrix.platform }} `
             -p:PublishTrimmed=true `
-            -p:Version=${{ steps.ver.outputs.version }} `
+            -p:Version=$env:VERSION `
             -p:DebugType=none `
             -p:WindowsPackageType=MSIX `
             -p:GenerateAppxPackageOnBuild=true `
             -p:AppxBundle=Never `
-            -p:AppxPackageSigningEnabled=true `
-            -p:PackageCertificateKeyFile="$PWD/signing.pfx" `
-            -p:PackageCertificatePassword="$env:MSIX_CERTIFICATE_PASSWORD" `
+            -p:AppxPackageSigningEnabled=false `
             -p:AppxPackageDir="$PWD/msix/"
-          Remove-Item signing.pfx
-          Get-ChildItem msix -Recurse -Filter *.msix | Copy-Item -Destination "RoundedTB_${{ steps.ver.outputs.tag }}_${{ matrix.rid }}.msix"
+          New-Item -ItemType Directory -Force packages | Out-Null
+          Get-ChildItem msix -Recurse -Filter *.msix | Copy-Item -Destination "packages/RoundedTB_${{ matrix.rid }}.msix"
 
-      - name: Upload artifact
+      - name: Upload archive
         uses: actions/upload-artifact@v4
         with:
-          name: RoundedTB-${{ matrix.rid }}
-          path: |
-            RoundedTB_*_${{ matrix.rid }}.zip
-            RoundedTB_*_${{ matrix.rid }}.msix
+          name: zip-${{ matrix.rid }}
+          path: RoundedTB_*_${{ matrix.rid }}.zip
+          if-no-files-found: error
+
+      - name: Upload package
+        if: needs.version.outputs.signed == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: msix-${{ matrix.rid }}
+          path: packages/*.msix
+          if-no-files-found: error
+
+  bundle:
+    needs: [version, build]
+    if: needs.version.outputs.signed == 'true'
+    runs-on: windows-latest
+    env:
+      TAG: ${{ needs.version.outputs.tag }}
+      VERSION: ${{ needs.version.outputs.version }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Install sign CLI
+        run: dotnet tool update sign --tool-path "${{ runner.temp }}/sign-tool" --version ${{ env.SIGN_VERSION }}
+
+      - name: Download packages
+        uses: actions/download-artifact@v4
+        with:
+          pattern: msix-*
+          path: packages
+          merge-multiple: true
+
+      - name: Bundle
+        shell: pwsh
+        run: |
+          $makeappx = Get-ChildItem "${env:ProgramFiles(x86)}\Windows Kits\10\bin\*\x64\makeappx.exe" | Sort-Object FullName | Select-Object -Last 1
+          New-Item -ItemType Directory -Force out | Out-Null
+          & $makeappx.FullName bundle /o /d packages /bv $env:VERSION /p "out/RoundedTB_$env:TAG.msixbundle"
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+
+      - name: Sign bundle
+        shell: pwsh
+        run: >
+          & "${{ runner.temp }}/sign-tool/sign.exe" code artifact-signing
+          --artifact-signing-endpoint $env:ARTIFACT_SIGNING_ENDPOINT
+          --artifact-signing-account $env:ARTIFACT_SIGNING_ACCOUNT
+          --artifact-signing-certificate-profile $env:ARTIFACT_SIGNING_PROFILE
+          --file-digest SHA256 --timestamp-url http://timestamp.acs.microsoft.com/ --timestamp-digest SHA256
+          --base-directory out
+          "RoundedTB_$env:TAG.msixbundle"
+
+      # Installs read the .appinstaller from the latest release to find updates, so only stable
+      # releases carry one; pre-releases never become "latest".
+      - name: Write .appinstaller
+        if: needs.version.outputs.stable == 'true'
+        shell: pwsh
+        run: |
+          [xml]$manifest = Get-Content RoundedTB/Package.appxmanifest
+          $identity = $manifest.Package.Identity
+          $base = "https://github.com/${{ github.repository }}/releases"
+          @"
+          <?xml version="1.0" encoding="utf-8"?>
+          <AppInstaller xmlns="http://schemas.microsoft.com/appx/appinstaller/2018" Version="$env:VERSION" Uri="$base/latest/download/RoundedTB.appinstaller">
+            <MainBundle Name="$($identity.Name)" Publisher="$($identity.Publisher)" Version="$env:VERSION" Uri="$base/download/$env:TAG/RoundedTB_$env:TAG.msixbundle" />
+            <UpdateSettings>
+              <OnLaunch HoursBetweenUpdateChecks="24" />
+              <AutomaticBackgroundTask />
+            </UpdateSettings>
+          </AppInstaller>
+          "@ | Set-Content out/RoundedTB.appinstaller -Encoding utf8
+
+      - name: Upload bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: bundle
+          path: out/*
           if-no-files-found: error
 
   release:
     name: create-release
-    needs: build
+    needs: [version, build, bundle]
+    if: ${{ !cancelled() && needs.build.result == 'success' && needs.bundle.result != 'failure' }}
     runs-on: ubuntu-latest
+    env:
+      TAG: ${{ needs.version.outputs.tag }}
 
     steps:
-      - name: Resolve tag
-        id: ver
-        run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then tag="${{ inputs.tag }}"; else tag="${{ github.ref_name }}"; fi
-          echo "tag=$tag" >> "$GITHUB_OUTPUT"
-
       - name: Download artifacts
         uses: actions/download-artifact@v4
         with:
-          pattern: RoundedTB-*
           merge-multiple: true
 
       - name: Create release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ steps.ver.outputs.tag }}
+          tag_name: ${{ env.TAG }}
           draft: ${{ github.event_name == 'workflow_dispatch' }}
-          prerelease: ${{ startsWith(steps.ver.outputs.tag, 'canary') }}
+          prerelease: ${{ startsWith(env.TAG, 'canary') }}
           generate_release_notes: true
           body: |
-            Self-contained builds - no .NET or Windows App SDK runtime needed.
-
             | Download | For |
             |---|---|
-            | `RoundedTB_${{ steps.ver.outputs.tag }}_win-x64.zip` | Most PCs (Intel / AMD) |
-            | `RoundedTB_${{ steps.ver.outputs.tag }}_win-arm64.zip` | Windows on Arm (Snapdragon etc.) |
+            | `RoundedTB.appinstaller` | Install and keep RoundedTB up to date automatically (stable releases) |
+            | `RoundedTB_${{ env.TAG }}.msixbundle` | Install this version as a package |
+            | `RoundedTB_${{ env.TAG }}_win-x64.zip` | Portable, most PCs (Intel / AMD) |
+            | `RoundedTB_${{ env.TAG }}_win-arm64.zip` | Portable, Windows on Arm (Snapdragon etc.) |
 
-            Extract the whole `RoundedTB` folder and run `RoundedTB.exe`, or install the `.msix` for your
-            architecture when one is attached.
-
-            The zip builds are unsigned, so SmartScreen will warn on first run.
+            Everything is self-contained; no .NET or Windows App SDK runtime is needed. For the portable
+            builds, extract the whole `RoundedTB` folder and run `RoundedTB.exe`.
           files: |
             RoundedTB_*.zip
-            RoundedTB_*.msix
+            RoundedTB_*.msixbundle
+            RoundedTB.appinstaller
           fail_on_unmatched_files: false

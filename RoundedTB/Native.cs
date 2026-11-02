@@ -141,6 +141,12 @@ namespace RoundedTB
         public static partial IntPtr LoadImage(IntPtr instance, string name, uint type, int cx, int cy, uint flags);
 
         [LibraryImport("user32.dll")]
+        public static partial int GetSystemMetricsForDpi(int index, uint dpi);
+
+        [LibraryImport("user32.dll")]
+        public static partial uint GetDpiForWindow(IntPtr hWnd);
+
+        [LibraryImport("user32.dll")]
         [return: MarshalAs(UnmanagedType.Bool)]
         public static partial bool DestroyIcon(IntPtr icon);
 
