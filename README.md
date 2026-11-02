@@ -72,7 +72,7 @@ dotnet publish RoundedTB/RoundedTB.csproj -c Release -r win-arm64 -p:Platform=AR
 
 ### Releases
 
-GitHub Actions builds releases from tags: `v*` publishes a release and `canary*` a pre-release. The binaries and the `.msixbundle` are signed with Azure Artifact Signing when these secrets are set:
+GitHub Actions builds releases from tags: `v*` publishes a release and `canary*` a pre-release. The binaries and the `.msixbundle` are signed with Azure Artifact Signing when these secrets are set in the `release` environment (limit its deployments to `v*` and `canary*` tags):
 
 | Secret | |
 |---|---|
