@@ -1,54 +1,64 @@
+<div align="center">
+
+<img src="RoundedTB/Images/StoreLogo.scale-400.png" width="96" alt="RoundedTB logo">
+
 # RoundedTB
 
-Add margins, rounded corners and segments to your Windows 11 taskbar.
+Margins, rounded corners and segments for the Windows 11 taskbar.
+
+[![Latest release](https://img.shields.io/github/v/release/cryptofyre/RoundedTB?label=release)](https://github.com/cryptofyre/RoundedTB/releases/latest)
+[![CI](https://github.com/cryptofyre/RoundedTB/actions/workflows/ci.yml/badge.svg)](https://github.com/cryptofyre/RoundedTB/actions/workflows/ci.yml)
+[![License](https://img.shields.io/github/license/cryptofyre/RoundedTB)](LICENSE)
 
 ![RoundedTB in dynamic mode](https://user-images.githubusercontent.com/31840547/134795141-76349eaf-12da-40f8-b2a0-d7b7c268d152.png)
 
-## Download
+</div>
 
-Grab the latest build from the [releases page](https://github.com/cryptofyre/RoundedTB/releases/latest).
+## Install
 
-| File | For |
-|---|---|
-| `RoundedTB_<version>_win-x64.zip` | Most PCs (Intel / AMD) |
-| `RoundedTB_<version>_win-arm64.zip` | Windows on Arm (Snapdragon etc.) |
+| | Download | |
+|---|---|---|
+| **Recommended** | [`RoundedTB.appinstaller`](https://github.com/cryptofyre/RoundedTB/releases/latest/download/RoundedTB.appinstaller) | Installs RoundedTB and keeps it up to date |
+| Package | `RoundedTB_<version>.msixbundle` | Installs one version, x64 and ARM64 in one file |
+| Portable | `RoundedTB_<version>_win-x64.zip` / `_win-arm64.zip` | Extract the `RoundedTB` folder and run `RoundedTB.exe` |
 
-Builds are self-contained, so no .NET or Windows App SDK runtime is needed. Extract the whole `RoundedTB` folder and run `RoundedTB.exe`. The binary is unsigned, so SmartScreen will warn on first run. Releases that include an `.msix` can be installed instead.
+Everything is on the [releases page](https://github.com/cryptofyre/RoundedTB/releases/latest), signed and self-contained: no .NET or Windows App SDK runtime needed.
 
 The RoundedTB on the Microsoft Store is the [original project](https://github.com/RoundedTB/RoundedTB), not this fork.
 
-## What's different in this fork
+## Features
 
-- **Works on current Insider builds.** Dynamic mode masks the Start and Search buttons correctly again after the taskbar's layout changes.
-- **Redraws on display changes.** Changing resolution, scaling or the work area rebuilds the taskbar mask instead of leaving it stale.
-- **WinUI 3 settings flyout** that opens from the tray icon above the taskbar, with acrylic and a compositor slide animation.
-- **Native ARM64 builds** alongside x64.
-- **Removes the Insider build watermark** (Advanced → Insider watermark). A C# port of [UWD2](https://github.com/machineonamission/uwd2) by Melody: it resolves `CDesktopWatermark::s_DesktopBuildPaint` from Microsoft's symbols and returns early from it in the running Explorer, on both x64 and ARM64. Re-applies itself if Explorer restarts, and never touches the Activate Windows watermark. Needs the internet once per build to fetch symbols.
-- Plus the stability fixes from [Gniang's fork](https://github.com/Gniang/RoundedTB): .NET 10, a self-healing background worker, atomic settings saves and migration of old configs.
+- **Rounded corners and margins** on every taskbar, including secondary monitors.
+- **Dynamic mode** splits the taskbar into segments around the apps and the system tray, and can round the button hover highlights to match.
+- **WinUI 3 settings flyout** that opens from the tray icon above the taskbar, with acrylic and smooth page transitions.
+- **Insider watermark remover** (Advanced → Insider watermark). A C# port of [UWD2](https://github.com/machineonamission/uwd2) by Melody that patches the running Explorer on x64 and ARM64, reapplies itself after Explorer restarts, and never touches the Activate Windows watermark. It fetches Microsoft's symbols once per Windows build.
+- **Native ARM64** alongside x64.
+- **Works on current Insider builds** and redraws when the resolution, scaling or work area changes.
 
-Settings live in `%LOCALAPPDATA%\RoundedTB\rtb.json`. The MSIX package keeps its own copy in its app data, seeded from that file on first run.
+Settings live in `%LOCALAPPDATA%\RoundedTB\rtb.json`. The packaged app keeps its own copy, seeded from that file on first run.
 
 ## Known issues
 
-- **Windows auto-hide taskbar** isn't supported.
+- **Auto-hide taskbar** isn't supported.
 - **Windows 10** hasn't been tested and probably doesn't work.
-- **Rounded corners aren't antialiased.** This is a Windows limitation ([torchgm/RoundedTB#4](https://github.com/torchgm/RoundedTB/issues/4)).
+- **Corners aren't antialiased.** This is a Windows limitation ([torchgm/RoundedTB#4](https://github.com/torchgm/RoundedTB/issues/4)).
 - **The top of the taskbar isn't rounded.** Raising the top margin helps, but the value that looks right can change after a restart.
-- **Dynamic mode may not cut off the left side on first run** if you've never changed the taskbar alignment. Switch alignment to Left and back to Center to fix it ([torchgm/RoundedTB#98](https://github.com/torchgm/RoundedTB/issues/98)).
+- **Dynamic mode may not cut off the left side on first run** if you've never changed the taskbar alignment. Switch to Left and back to Center to fix it ([torchgm/RoundedTB#98](https://github.com/torchgm/RoundedTB/issues/98)).
 - **Dynamic mode can stay applied after RoundedTB exits.** Restarting Explorer or signing out clears it.
+- **Rounded highlights** rely on the taskbar's internal layout, so a future Windows build can quietly stop them working.
 - **TranslucentTB** works with the compatibility option enabled, but may flicker when the taskbar updates.
 
 If anything breaks badly, press <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>Esc</kbd>, end RoundedTB and restart Windows Explorer. RoundedTB makes no permanent changes (apart from running on startup if you turn that on), so a restart always clears it.
 
 ## Building
 
-Requires the .NET 10 SDK. Pick the platform (`x64` or `ARM64`):
+Requires the .NET 10 SDK and Visual Studio's C++ build tools (for `RoundedTB.Tap`, the native part of the highlight rounding). Pick the platform, `x64` or `ARM64`:
 
 ```
 dotnet build RoundedTB/RoundedTB.csproj -c Release -p:Platform=ARM64
 ```
 
-Release-style unpackaged build:
+Unpackaged release build:
 
 ```
 dotnet publish RoundedTB/RoundedTB.csproj -c Release -r win-arm64 -p:Platform=ARM64 -p:PublishTrimmed=true
@@ -60,8 +70,17 @@ MSIX package (unsigned; sign it, or register the unpacked layout in Developer Mo
 dotnet publish RoundedTB/RoundedTB.csproj -c Release -r win-arm64 -p:Platform=ARM64 -p:PublishTrimmed=true -p:WindowsPackageType=MSIX -p:GenerateAppxPackageOnBuild=true -p:AppxPackageSigningEnabled=false
 ```
 
-Releases are built by GitHub Actions: pushing a `v*` tag publishes a release with x64 and ARM64 zips, and a `canary*` tag publishes a pre-release. MSIX packages are added when the `MSIX_CERTIFICATE` (base64 `.pfx`) and `MSIX_CERTIFICATE_PASSWORD` secrets are set; the certificate subject must match the `Publisher` in `RoundedTB/Package.appxmanifest`.
+### Releases
+
+GitHub Actions builds releases from tags: `v*` publishes a release and `canary*` a pre-release. The binaries and the `.msixbundle` are signed with Azure Artifact Signing when these secrets are set:
+
+| Secret | |
+|---|---|
+| `ARTIFACT_SIGNING_ENDPOINT`, `ARTIFACT_SIGNING_ACCOUNT`, `ARTIFACT_SIGNING_PROFILE` | The signing account and certificate profile |
+| `AZURE_TENANT_ID`, `AZURE_CLIENT_ID`, `AZURE_CLIENT_SECRET` | A service principal allowed to sign with that profile |
+
+The certificate subject must match the `Publisher` in `RoundedTB/Package.appxmanifest`. Without the secrets, releases carry only the unsigned zips. Stable releases also attach `RoundedTB.appinstaller`, which installed copies check for updates.
 
 ## Credits
 
-RoundedTB was created by [torchgm](https://github.com/torchgm) — see the [original project](https://github.com/RoundedTB/RoundedTB). This fork builds on the maintenance work in [Gniang/RoundedTB](https://github.com/Gniang/RoundedTB).
+RoundedTB was created by [torchgm](https://github.com/torchgm); see the [original project](https://github.com/RoundedTB/RoundedTB). This fork builds on the maintenance work in [Gniang/RoundedTB](https://github.com/Gniang/RoundedTB).
