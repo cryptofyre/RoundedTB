@@ -1,4 +1,4 @@
-![RoundedTB](docs/images/hero.jpg)
+![RoundedTB](.github/assets/hero.jpg)
 
 <div align="center">
 
@@ -48,5 +48,3 @@ If the taskbar ever looks wrong, quit RoundedTB from its tray icon, or press <kb
 ## Credits
 
 RoundedTB was created by [torchgm](https://github.com/torchgm); see the [original project](https://github.com/RoundedTB/RoundedTB). This version builds on the maintenance work in [Gniang/RoundedTB](https://github.com/Gniang/RoundedTB), and the watermark remover is a port of [UWD2](https://github.com/machineonamission/uwd2) by Melody.
-
-Want to build it yourself? See [docs/building.md](docs/building.md).
