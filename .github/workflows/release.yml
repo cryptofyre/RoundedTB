@@ -119,7 +119,7 @@ jobs:
           --artifact-signing-account $env:ARTIFACT_SIGNING_ACCOUNT
           --artifact-signing-certificate-profile $env:ARTIFACT_SIGNING_PROFILE
           --file-digest SHA256 --timestamp-url http://timestamp.acs.microsoft.com/ --timestamp-digest SHA256
-          --base-directory publish/RoundedTB
+          --base-directory "$PWD/publish/RoundedTB"
           RoundedTB.exe RoundedTB.dll RoundedTB.Tap.dll
 
       - name: Archive
@@ -230,7 +230,7 @@ jobs:
           --artifact-signing-account $env:ARTIFACT_SIGNING_ACCOUNT
           --artifact-signing-certificate-profile $env:ARTIFACT_SIGNING_PROFILE
           --file-digest SHA256 --timestamp-url http://timestamp.acs.microsoft.com/ --timestamp-digest SHA256
-          --base-directory out
+          --base-directory "$PWD/out"
           "RoundedTB_$env:TAG.msixbundle"
 
       # Installs read the .appinstaller from the latest release to find updates, so only stable
