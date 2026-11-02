@@ -48,7 +48,20 @@
     <TrimmerRootAssembly Include="Interop.UIAutomationClient" />
   </ItemGroup>
 
+  <!-- The native DLL RoundedTB loads into Explorer to round the button highlights; it has to match
+       Explorer's architecture, so it is built per runtime with MSVC (see RoundedTB.Tap\build.cmd). -->
+  <PropertyGroup>
+    <TapArch Condition="'$(RuntimeIdentifier)' == 'win-arm64'">arm64</TapArch>
+    <TapArch Condition="'$(TapArch)' == ''">x64</TapArch>
+    <TapDll>$(MSBuildThisFileDirectory)..\RoundedTB.Tap\bin\$(TapArch)\RoundedTB.Tap.dll</TapDll>
+  </PropertyGroup>
+
+  <Target Name="BuildTap" BeforeTargets="BeforeBuild" Inputs="..\RoundedTB.Tap\Tap.cpp;..\RoundedTB.Tap\Tap.def;..\RoundedTB.Tap\build.cmd" Outputs="$(TapDll)">
+    <Exec Command="&quot;$(MSBuildThisFileDirectory)..\RoundedTB.Tap\build.cmd&quot; $(TapArch)" />
+  </Target>
+
   <ItemGroup>
+    <Content Include="$(TapDll)" Link="RoundedTB.Tap.dll" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="res\TrayDark.ico" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="res\TrayLight.ico" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="Images\*.png" />

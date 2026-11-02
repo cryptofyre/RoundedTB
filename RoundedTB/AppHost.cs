@@ -38,6 +38,8 @@ namespace RoundedTB
         private readonly TrayIcon tray;
         private FlyoutWindow flyout;
         private TrayMenu trayMenu;
+        private readonly HighlightStyler highlights = new();
+        private bool highlightsApplied;
         private int workerRestartCount;
         private DateTime workerRestartWindowStart = DateTime.MinValue;
         private int appliedAutoHide = -1;
@@ -192,6 +194,7 @@ namespace RoundedTB
                 activeSettings.FillOnTaskSwitch = false;
             }
 
+            ApplyHighlights();
             background.RequestSettingsRedraw();
             if (!taskbarThread.IsBusy)
             {
@@ -233,6 +236,7 @@ namespace RoundedTB
             {
                 StartWorker();
             }
+            ApplyHighlights();
             AutoHide(activeSettings.AutoHide > 0, taskbarDetails);
             appliedAutoHide = activeSettings.AutoHide;
             interaction.WriteJSON();
@@ -245,6 +249,22 @@ namespace RoundedTB
         }
 
         /// <summary>Settings changed outside the flyout (the Win+F2 hotkey).</summary>
+        /// <summary>Rounds the taskbar button highlights to sit inside the segment corners, or restores Explorer's.</summary>
+        private void ApplyHighlights()
+        {
+            if (activeSettings.RoundButtonHighlights)
+            {
+                int segment = (activeSettings.IsDynamic ? activeSettings.DynamicAppListLayout : activeSettings.SimpleTaskbarLayout).CornerRadius;
+                highlights.Apply(Math.Max(2, segment - 2));
+                highlightsApplied = true;
+            }
+            else if (highlightsApplied)
+            {
+                highlights.Apply(-1);
+                highlightsApplied = false;
+            }
+        }
+
         public void SettingsChangedExternally()
         {
             ApplySettings();
@@ -340,6 +360,11 @@ namespace RoundedTB
         /// <summary>The patch lives in Explorer's memory, so it has to be re-applied after Explorer restarts.</summary>
         public void OnExplorerRecovered()
         {
+            if (activeSettings.RoundButtonHighlights)
+            {
+                // Give the new taskbar time to build its XAML before attaching to it.
+                Task.Delay(2000).ContinueWith(_ => Dispatcher.TryEnqueue(ApplyHighlights));
+            }
             if (activeSettings.RemoveInsiderWatermark)
             {
                 SyncWatermarkState(initialDelayMs: 1500);
@@ -491,6 +516,11 @@ namespace RoundedTB
             flyout?.FlushPendingChanges();
             RestoreTaskbars();
             interaction.WriteJSON();
+            if (highlightsApplied)
+            {
+                highlights.Apply(-1);
+            }
+            highlights.Dispose();
             Native.UnregisterHotKey(tray.Handle, HotkeyId);
             tray.Dispose();
             // Everything is restored and saved; XAML teardown can take several seconds, during which a

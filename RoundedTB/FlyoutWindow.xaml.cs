@@ -530,6 +530,7 @@ namespace RoundedTB
                 HoverToggle.IsOn = s.ShowSegmentsOnHover;
                 CompositionToggle.IsOn = s.CompositionCompat;
                 AutoHideToggle.IsOn = s.AutoHide == 1;
+                RoundHighlightsToggle.IsOn = s.RoundButtonHighlights;
                 WatermarkToggle.IsOn = s.RemoveInsiderWatermark;
 
                 if (SegmentSegmented.SelectedIndex < 0)
@@ -794,6 +795,7 @@ namespace RoundedTB
             s.ShowSegmentsOnHover = HoverToggle.IsOn;
             s.CompositionCompat = CompositionToggle.IsOn;
             s.AutoHide = AutoHideToggle.IsOn ? 1 : 0;
+            s.RoundButtonHighlights = RoundHighlightsToggle.IsOn;
             UpdateLabelsAndStates();
             ScheduleApply();
         }
