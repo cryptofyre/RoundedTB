@@ -119,6 +119,7 @@
                 <RowDefinition Height="Auto" />
             </Grid.RowDefinitions>
 
+            <SystemBackdropElement x:Name="Acrylic" Grid.RowSpan="2" CornerRadius="8" />
             <Border x:Name="ShapeHost" Grid.RowSpan="2" />
 
             <Grid x:Name="Body">
@@ -438,24 +439,31 @@
                 </ScrollViewer>
             </Grid>
 
-            <Border x:Name="Footer" Grid.Row="1" Padding="10,6" BorderThickness="0,1,0,0" CornerRadius="0,0,8,8"
-                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
-                    Background="{ThemeResource LayerOnAcrylicFillColorDefaultBrush}">
-                <Grid>
-                    <Button x:Name="HelpButton" HorizontalAlignment="Left" Click="Help_Click" AutomationProperties.Name="Help and about">
-                        <StackPanel Orientation="Horizontal" Spacing="8">
-                            <FontIcon x:Name="HelpButtonIcon" Glyph="&#xE946;" FontSize="14" />
-                            <TextBlock x:Name="HelpButtonText" Text="Help &amp; about" />
-                        </StackPanel>
-                    </Button>
-                    <Button HorizontalAlignment="Right" Click="Quit_Click" AutomationProperties.Name="Quit RoundedTB" ToolTipService.ToolTip="Restore the taskbar and close RoundedTB">
-                        <StackPanel Orientation="Horizontal" Spacing="8">
-                            <FontIcon Glyph="&#xE7E8;" FontSize="14" />
-                            <TextBlock Text="Quit" />
-                        </StackPanel>
-                    </Button>
-                </Grid>
-            </Border>
+            <Grid x:Name="Footer" Grid.Row="1" Padding="8,4,8,6" ColumnSpacing="4">
+                <Grid.Resources>
+                    <!-- Flat until hovered, like the buttons along the bottom of the shell's quick settings. -->
+                    <StaticResource x:Key="ButtonBackground" ResourceKey="SubtleFillColorTransparentBrush" />
+                    <StaticResource x:Key="ButtonBackgroundPointerOver" ResourceKey="SubtleFillColorSecondaryBrush" />
+                    <StaticResource x:Key="ButtonBackgroundPressed" ResourceKey="SubtleFillColorTertiaryBrush" />
+                    <StaticResource x:Key="ButtonBorderBrush" ResourceKey="SubtleFillColorTransparentBrush" />
+                    <StaticResource x:Key="ButtonBorderBrushPointerOver" ResourceKey="SubtleFillColorTransparentBrush" />
+                    <StaticResource x:Key="ButtonBorderBrushPressed" ResourceKey="SubtleFillColorTransparentBrush" />
+                </Grid.Resources>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <Button x:Name="HelpButton" Height="36" Padding="10,0" Click="Help_Click" AutomationProperties.Name="Help and about">
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <FontIcon x:Name="HelpButtonIcon" Glyph="&#xE946;" FontSize="14" />
+                        <TextBlock x:Name="HelpButtonText" Text="Help &amp; about" />
+                    </StackPanel>
+                </Button>
+                <Button Grid.Column="1" Width="36" Height="36" Padding="0" Click="Quit_Click"
+                        AutomationProperties.Name="Quit RoundedTB" ToolTipService.ToolTip="Restore the taskbar and quit RoundedTB">
+                    <FontIcon Glyph="&#xE7E8;" FontSize="14" />
+                </Button>
+            </Grid>
         </local:CardPanel>
     </Grid>
 </Window>

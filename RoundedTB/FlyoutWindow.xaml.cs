@@ -25,15 +25,12 @@ namespace RoundedTB
     /// <summary>
     /// The settings flyout. While open, this window keeps a fixed size (the height available beside
     /// the taskbar) and is clear apart from the card, so every height change and page transition is a
-    /// composition animation inside it. The acrylic lives in <see cref="BackdropWindow"/> behind the
-    /// card; while anything moves, the card is filled with a near-opaque tint instead and the
-    /// backdrop catches up once it settles.
+    /// composition animation inside it. The acrylic is an element in the card, so it moves with it.
     /// </summary>
     public sealed partial class FlyoutWindow : Window
     {
         private const float CardWidth = 360;
         private const float CornerRadius = 8;
-        private const float ShapeMargin = 4000;
         private const int DefaultRadiusMax = 32, DefaultMarginMax = 20;
         private static readonly TimeSpan OpenDuration = TimeSpan.FromMilliseconds(250);
         private static readonly TimeSpan CloseDuration = TimeSpan.FromMilliseconds(150);
@@ -48,7 +45,8 @@ namespace RoundedTB
         private readonly InsetClip bodyClip;
         private readonly CompositionRoundedRectangleGeometry cardGeometry;
         private readonly CompositionSpriteShape cardShape;
-        private readonly BackdropWindow backdrop;
+        private readonly TintedAcrylicBackdrop acrylic;
+        private readonly ShapeVisual shapes;
         private readonly DispatcherQueueTimer applyTimer;
 
         // Sliders coerce and fire ValueChanged while the XAML loads, before the fields are set.
@@ -57,13 +55,12 @@ namespace RoundedTB
         private bool closing;
         private bool sliding;
         private bool light;
-        private int motions;
-        private readonly DispatcherQueueTimer settleTimer;
         private DateTime lastHidden = DateTime.MinValue;
         private Edge edge = Edge.Bottom;
         private IntPtr targetMonitor;
         private RectInt32 windowBounds;
         private double scale = 1;
+        private float shapeMargin;
 
         private Types.Settings Settings => host.activeSettings;
 
@@ -71,7 +68,7 @@ namespace RoundedTB
         {
             this.host = host;
             InitializeComponent();
-            hwnd = PopupChrome.Apply(this, clickThrough: false);
+            hwnd = PopupChrome.Apply(this);
             // A tall clear window: no rounding, and no DWM shadow around its whole rect.
             PopupChrome.SetAttribute(hwnd, Native.DWMWA_WINDOW_CORNER_PREFERENCE, Native.DWMWCP_DONOTROUND);
             PopupChrome.SetAttribute(hwnd, Native.DWMWA_NCRENDERING_POLICY, Native.DWMNCRP_DISABLED);
@@ -87,22 +84,21 @@ namespace RoundedTB
             bodyClip = compositor.CreateInsetClip();
             ElementCompositionPreview.GetElementVisual(Body).Clip = bodyClip;
 
-            // The card's fill and outline. Drawn in a visual much taller than the card so the shape can
-            // extend past the card's layout bounds while a height change animates.
+            // The card's outline. Drawn in a visual taller than the card so the shape can extend past
+            // the card's layout bounds while a height change animates.
             cardGeometry = compositor.CreateRoundedRectangleGeometry();
             cardGeometry.CornerRadius = new Vector2(CornerRadius, CornerRadius);
             cardShape = compositor.CreateSpriteShape(cardGeometry);
             cardShape.StrokeThickness = 1;
-            ShapeVisual shapes = compositor.CreateShapeVisual();
+            shapes = compositor.CreateShapeVisual();
             shapes.Shapes.Add(cardShape);
-            shapes.Offset = new Vector3(0, -ShapeMargin, 0);
-            shapes.Size = new Vector2(CardWidth, 2 * ShapeMargin);
             ElementCompositionPreview.SetElementChildVisual(ShapeHost, shapes);
             Card.HeightChanging += Card_HeightChanging;
 
             if (DesktopAcrylicController.IsSupported())
             {
-                backdrop = new BackdropWindow();
+                acrylic = new TintedAcrylicBackdrop();
+                Acrylic.SystemBackdrop = acrylic;
             }
             ApplyTheme();
 
@@ -128,11 +124,6 @@ namespace RoundedTB
             applyTimer.IsRepeating = false;
             applyTimer.Tick += (_, _) => host.ApplySettings();
 
-            settleTimer = DispatcherQueue.CreateTimer();
-            settleTimer.Interval = TimeSpan.FromMilliseconds(150);
-            settleTimer.IsRepeating = false;
-            settleTimer.Tick += (_, _) => SetFill();
-
             loading = false;
         }
 
@@ -149,64 +140,26 @@ namespace RoundedTB
         {
             light = SystemUsesLightTheme();
             Root.RequestedTheme = light ? ElementTheme.Light : ElementTheme.Dark;
-            backdrop?.SetTheme(light);
+            acrylic?.SetTheme(light);
             cardShape.StrokeBrush = compositor.CreateColorBrush(light ? Color.FromArgb(0x1A, 0, 0, 0) : Color.FromArgb(0x26, 0xFF, 0xFF, 0xFF));
-            SetFill();
-        }
-
-        /// <summary>
-        /// A strong tint over the acrylic, like the shell flyouts, made near-opaque while the card moves:
-        /// the acrylic window only catches up afterwards (and draws nothing for a moment while it
-        /// resizes). The fill changes in the same composition frame as the motion, so it is never late.
-        /// </summary>
-        private void SetFill()
-        {
-            byte alpha = backdrop == null ? (byte)0xFF : motions > 0 ? (byte)0xF7 : (byte)0xD9;
-            cardShape.FillBrush = compositor.CreateColorBrush(Tint(alpha));
-        }
-
-        private void BeginMotion()
-        {
-            if (motions++ == 0)
-            {
-                settleTimer.Stop();
-                SetFill();
-            }
-        }
-
-        private void EndMotion()
-        {
-            if (--motions > 0)
-            {
-                return;
-            }
-            RevealBackdrop(Card.ActualHeight);
-            settleTimer.Start();
-        }
-
-        private Color Tint(byte alpha)
-        {
-            byte shade = light ? (byte)0xEE : (byte)0x1C;
-            return Color.FromArgb(alpha, shade, shade, shade);
+            // With acrylic the backdrop is the card's material; the shape only fills in without it.
+            cardShape.FillBrush = acrylic != null ? null
+                : compositor.CreateColorBrush(light ? TintedAcrylicBackdrop.LightTint : TintedAcrylicBackdrop.DarkTint);
         }
 
         /// <summary>Sets the card shape relative to the card's own layout box.</summary>
         private void SetShape(float top, float height)
         {
-            cardGeometry.Offset = new Vector2(0.5f, ShapeMargin + top + 0.5f);
+            cardGeometry.Offset = new Vector2(0.5f, shapeMargin + top + 0.5f);
             cardGeometry.Size = new Vector2(CardWidth - 1, Math.Max(0, height - 1));
         }
 
-        /// <summary>Puts the acrylic behind a card of <paramref name="height"/> (DIPs), anchored to the taskbar side.</summary>
-        private void RevealBackdrop(double height)
+        /// <summary>The outline reaches this far past the card, so a morph never runs out of room.</summary>
+        private void SetShapeMargin(float margin)
         {
-            if (backdrop == null || !isOpen || closing)
-            {
-                return;
-            }
-            int h = (int)Math.Round(height * scale);
-            int y = edge == Edge.Top ? windowBounds.Y : windowBounds.Y + windowBounds.Height - h;
-            backdrop.Reveal(new RectInt32(windowBounds.X, y, windowBounds.Width, h), hwnd);
+            shapeMargin = margin;
+            shapes.Offset = new Vector3(0, -margin, 0);
+            shapes.Size = new Vector2(CardWidth, 2 * margin);
         }
 
         private void AfterFrames(int frames, Action action)
@@ -285,7 +238,6 @@ namespace RoundedTB
             isOpen = true;
             closing = false;
             sliding = true;
-            BeginMotion();
             AppWindow.Show(true);
             Activate();
             Native.SetForegroundWindow(hwnd);
@@ -293,11 +245,7 @@ namespace RoundedTB
             AfterFrames(1, () =>
             {
                 SetShape(0, (float)Card.ActualHeight);
-                Slide(opening: true, () =>
-                {
-                    sliding = false;
-                    EndMotion();
-                });
+                Slide(opening: true, () => sliding = false);
             });
         }
 
@@ -310,16 +258,10 @@ namespace RoundedTB
             closing = true;
             sliding = true;
             FlushPendingChanges();
-            BeginMotion();
-            backdrop?.Conceal();
             Slide(opening: false, () =>
             {
                 AppWindow.Hide();
-                backdrop?.HideWindow();
                 sliding = false;
-                motions = 0;
-                settleTimer.Stop();
-                SetFill();
                 isOpen = false;
                 closing = false;
                 lastHidden = DateTime.UtcNow;
@@ -391,20 +333,13 @@ namespace RoundedTB
             Visual moving = ElementCompositionPreview.GetElementVisual(anchoredBottom ? Body : Footer);
             moving.Properties.InsertVector3("Translation", new Vector3(0, anchoredBottom ? delta : -delta, 0));
             SetShape(anchoredBottom ? delta : 0, from);
-            // The acrylic never sticks out of the card: when shrinking it goes to the final size now,
-            // when growing it stays inside the card and catches up at the end.
-            if (delta < 0)
-            {
-                RevealBackdrop(to);
-            }
-            BeginMotion();
 
             CubicBezierEasingFunction easing = compositor.CreateCubicBezierEasingFunction(new Vector2(0.1f, 0.9f), new Vector2(0.2f, 1f));
             Vector3KeyFrameAnimation settle = compositor.CreateVector3KeyFrameAnimation();
             settle.InsertKeyFrame(1f, Vector3.Zero, easing);
             settle.Duration = MorphDuration;
             Vector2KeyFrameAnimation offset = compositor.CreateVector2KeyFrameAnimation();
-            offset.InsertKeyFrame(1f, new Vector2(0.5f, ShapeMargin + 0.5f), easing);
+            offset.InsertKeyFrame(1f, new Vector2(0.5f, shapeMargin + 0.5f), easing);
             offset.Duration = MorphDuration;
             Vector2KeyFrameAnimation size = compositor.CreateVector2KeyFrameAnimation();
             size.InsertKeyFrame(1f, new Vector2(CardWidth - 1, to - 1), easing);
@@ -421,7 +356,7 @@ namespace RoundedTB
                 unclip.Duration = MorphDuration;
                 bodyClip.StartAnimation("BottomInset", unclip);
             }
-            Animate(moving, "Translation", settle, EndMotion);
+            moving.StartAnimation("Translation", settle);
         }
 
         /// <summary>
@@ -462,6 +397,7 @@ namespace RoundedTB
 
             windowBounds = new RectInt32(x, top, width, bottom - top);
             AppWindow.MoveAndResize(windowBounds);
+            SetShapeMargin((float)Math.Ceiling(windowBounds.Height / scale));
             Card.VerticalAlignment = edge == Edge.Top ? VerticalAlignment.Top : VerticalAlignment.Bottom;
             Footer.Measure(new Windows.Foundation.Size(CardWidth, double.PositiveInfinity));
             Body.MaxHeight = Math.Max(200, windowBounds.Height / scale - Footer.DesiredSize.Height);
@@ -955,9 +891,17 @@ namespace RoundedTB
         #endregion
     }
 
-    /// <summary>Desktop acrylic tinted towards the taskbar's material; DesktopAcrylicBackdrop has no tint.</summary>
+    /// <summary>
+    /// Desktop acrylic darkened (or whitened, in light mode) towards the taskbar's material;
+    /// DesktopAcrylicBackdrop has no tint. Tinting the acrylic itself keeps its grain on top.
+    /// </summary>
     internal sealed partial class TintedAcrylicBackdrop : SystemBackdrop
     {
+        public static readonly Color DarkTint = Color.FromArgb(0xFF, 0x10, 0x10, 0x12);
+        public static readonly Color LightTint = Color.FromArgb(0xFF, 0xF3, 0xF3, 0xF3);
+        private const float DarkTintOpacity = 0.6f, DarkLuminosity = 0.8f;
+        private const float LightTintOpacity = 0.6f, LightLuminosity = 0.85f;
+
         private readonly Dictionary<ICompositionSupportsSystemBackdrop, (DesktopAcrylicController Controller, SystemBackdropConfiguration Config)> targets = new();
         private bool light;
 
@@ -973,12 +917,11 @@ namespace RoundedTB
 
         private static void Configure(DesktopAcrylicController controller, bool light)
         {
-            Color tint = light ? Color.FromArgb(0xFF, 0xEE, 0xEE, 0xEE) : Color.FromArgb(0xFF, 0x1C, 0x1C, 0x1C);
             controller.Kind = DesktopAcrylicKind.Base;
-            controller.TintColor = tint;
-            controller.TintOpacity = 0.3f;
-            controller.LuminosityOpacity = 0.6f;
-            controller.FallbackColor = tint;
+            controller.TintColor = light ? LightTint : DarkTint;
+            controller.TintOpacity = light ? LightTintOpacity : DarkTintOpacity;
+            controller.LuminosityOpacity = light ? LightLuminosity : DarkLuminosity;
+            controller.FallbackColor = light ? LightTint : DarkTint;
         }
 
         protected override void OnTargetConnected(ICompositionSupportsSystemBackdrop connectedTarget, XamlRoot xamlRoot)

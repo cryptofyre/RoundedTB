@@ -23,7 +23,7 @@ namespace RoundedTB
         {
             this.host = host;
             Content = root;
-            hwnd = PopupChrome.Apply(this, clickThrough: false);
+            hwnd = PopupChrome.Apply(this);
             SystemBackdrop = new TransparentBackdrop();
 
             menu.Items.Add(Item("Settings", "\uE713", () => host.ShowSettings()));
