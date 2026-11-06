@@ -1,18 +1,16 @@
 using System;
 using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
-using Microsoft.UI.Xaml.Controls;
-using Windows.Graphics;
 using WinRT.Interop;
 
 namespace RoundedTB
 {
-    /// <summary>Borderless, topmost tool-window chrome shared by the flyout and its backdrop.</summary>
+    /// <summary>Borderless, topmost tool-window chrome shared by the flyout and the tray menu.</summary>
     internal static class PopupChrome
     {
         private static readonly Native.SubclassProc NoFrameProc = NoFrame;
 
-        public static IntPtr Apply(Window window, bool clickThrough)
+        public static IntPtr Apply(Window window)
         {
             IntPtr hwnd = WindowNative.GetWindowHandle(window);
             OverlappedPresenter presenter = OverlappedPresenter.Create();
@@ -26,10 +24,6 @@ namespace RoundedTB
 
             long ex = Native.GetWindowLongPtr(hwnd, Native.GWL_EXSTYLE);
             ex = (ex | Native.WS_EX_TOOLWINDOW) & ~Native.WS_EX_APPWINDOW;
-            if (clickThrough)
-            {
-                ex |= Native.WS_EX_NOACTIVATE | Native.WS_EX_TRANSPARENT;
-            }
             Native.SetWindowLongPtr(hwnd, Native.GWL_EXSTYLE, ex);
 
             // The presenter re-adds WS_DLGFRAME on every show, leaving a 3px frame that DWM paints
@@ -53,44 +47,6 @@ namespace RoundedTB
             }
             return Native.DefSubclassProc(hWnd, msg, wParam, lParam);
         }
-    }
-
-    /// <summary>
-    /// The acrylic behind the flyout card. It is a separate click-through window so the flyout window
-    /// itself never has to resize, which is what lets height changes animate cleanly.
-    /// </summary>
-    internal sealed class BackdropWindow : Window
-    {
-        private readonly IntPtr hwnd;
-        private readonly TintedAcrylicBackdrop acrylic = new();
-
-        public BackdropWindow()
-        {
-            Content = new Grid();
-            hwnd = PopupChrome.Apply(this, clickThrough: true);
-            PopupChrome.SetAttribute(hwnd, Native.DWMWA_WINDOW_CORNER_PREFERENCE, Native.DWMWCP_ROUND);
-            PopupChrome.SetAttribute(hwnd, Native.DWMWA_BORDER_COLOR, Native.DWMWA_COLOR_NONE);
-            SystemBackdrop = acrylic;
-        }
-
-        public void SetTheme(bool light) => acrylic.SetTheme(light);
-
-        /// <summary>Shows the acrylic at <paramref name="bounds"/>, directly beneath <paramref name="above"/>.</summary>
-        public void Reveal(RectInt32 bounds, IntPtr above)
-        {
-            AppWindow.MoveAndResize(bounds);
-            if (!AppWindow.IsVisible)
-            {
-                PopupChrome.SetCloaked(hwnd, true);
-                AppWindow.Show(false);
-            }
-            Native.SetWindowPos(hwnd, above, 0, 0, 0, 0, Native.SWP_NOMOVE | Native.SWP_NOSIZE | Native.SWP_NOACTIVATE);
-            PopupChrome.SetCloaked(hwnd, false);
-        }
-
-        public void Conceal() => PopupChrome.SetCloaked(hwnd, true);
-
-        public void HideWindow() => AppWindow.Hide();
     }
 
     /// <summary>

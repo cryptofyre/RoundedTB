@@ -6,7 +6,7 @@
     <TargetPlatformMinVersion>10.0.19041.0</TargetPlatformMinVersion>
     <RootNamespace>RoundedTB</RootNamespace>
     <!-- Releases override this with the tag's version; it also becomes the MSIX version. -->
-    <Version>3.3.0</Version>
+    <Version>3.3.1</Version>
     <UseWinUI>true</UseWinUI>
     <Nullable>annotations</Nullable>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
