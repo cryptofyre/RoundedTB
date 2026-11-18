@@ -308,6 +308,11 @@
                                     <TextBlock Text="Auto-hide the taskbar" VerticalAlignment="Center" TextWrapping="Wrap" />
                                     <ToggleSwitch x:Name="AutoHideToggle" Style="{StaticResource RowSwitch}" Toggled="Toggle_Toggled" />
                                 </Grid>
+                                <Grid Style="{StaticResource Row}" Margin="16,0,0,0">
+                                    <Grid.ColumnDefinitions><ColumnDefinition /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                                    <TextBlock Text="Only when a window is maximised" VerticalAlignment="Center" TextWrapping="Wrap" />
+                                    <ToggleSwitch x:Name="AutoHideMaximisedToggle" Style="{StaticResource RowSwitch}" Toggled="Toggle_Toggled" />
+                                </Grid>
                                 <Grid Style="{StaticResource Row}">
                                     <Grid.ColumnDefinitions><ColumnDefinition /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
                                     <TextBlock Text="Round button highlights to match" VerticalAlignment="Center" TextWrapping="Wrap" />

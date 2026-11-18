@@ -114,10 +114,10 @@ namespace RoundedTB
             {
                 activeSettings.FillOnTaskSwitch = false;
             }
-            // Only 0 (always show) and 1 (auto-hide) were ever selectable.
-            if (activeSettings.AutoHide < 0 || activeSettings.AutoHide > 1)
+            // 0 = always show, 1 = always auto-hide, 2 = auto-hide when a window is maximised.
+            if (activeSettings.AutoHide < (int)Types.AutoHideMode.Off || activeSettings.AutoHide > (int)Types.AutoHideMode.OnMaximise)
             {
-                activeSettings.AutoHide = 0;
+                activeSettings.AutoHide = (int)Types.AutoHideMode.Off;
             }
 
             taskbarDetails = Taskbar.GenerateTaskbarInfo(isWindows11);
@@ -205,7 +205,7 @@ namespace RoundedTB
 
             if (activeSettings.AutoHide != appliedAutoHide)
             {
-                AutoHide(activeSettings.AutoHide > 0, taskbarDetails);
+                AutoHide(activeSettings.AutoHide > (int)Types.AutoHideMode.Off, taskbarDetails);
                 appliedAutoHide = activeSettings.AutoHide;
             }
             interaction.WriteJSON();
@@ -297,18 +297,30 @@ namespace RoundedTB
             }
             MonitorStuff.DisplayInfoCollection displays = MonitorStuff.GetDisplays();
 
-            if (activeSettings.AutoHide > 0 && enabled)
+            if (activeSettings.AutoHide > (int)Types.AutoHideMode.Off && enabled)
             {
-                foreach (MonitorStuff.DisplayInfo display in displays)
-                {
-                    LocalPInvoke.RECT workArea = display.MonitorArea;
-                    workArea.Bottom -= 2;
-                    Interaction.SetWorkspace(workArea);
-                }
                 foreach (Types.Taskbar taskbar in taskbars)
                 {
-                    LocalPInvoke.SetWindowPos(taskbar.TaskbarHwnd, new IntPtr(-1), 0, 0, 0, 0, LocalPInvoke.SetWindowPosFlags.IgnoreMove | LocalPInvoke.SetWindowPosFlags.IgnoreResize);
-                    Taskbar.SetTaskbarState(LocalPInvoke.AppBarStates.AlwaysOnTop, taskbar.TaskbarHwnd);
+                    Taskbar.EnsureAlwaysOnTopState(taskbar.TaskbarHwnd);
+                    LocalPInvoke.SetWindowPos(taskbar.TaskbarHwnd, new IntPtr(-1), 0, 0, 0, 0,
+                        LocalPInvoke.SetWindowPosFlags.IgnoreMove | LocalPInvoke.SetWindowPosFlags.IgnoreResize | LocalPInvoke.SetWindowPosFlags.DoNotActivate);
+                }
+
+                if (activeSettings.AutoHide == (int)Types.AutoHideMode.Always)
+                {
+                    foreach (MonitorStuff.DisplayInfo display in displays)
+                    {
+                        Taskbar.SetMonitorWorkArea(display.Handle, display.MonitorArea, broadcast: false);
+                    }
+                    foreach (Types.Taskbar taskbar in taskbars)
+                    {
+                        IntPtr monitor = LocalPInvoke.MonitorFromWindow(taskbar.TaskbarHwnd, 2);
+                        MonitorStuff.DisplayInfo display = displays.Find(d => d.Handle == monitor);
+                        if (display != null)
+                        {
+                            Taskbar.ExpandMaximizedWindows(taskbar.TaskbarHwnd, display.MonitorArea);
+                        }
+                    }
                 }
             }
             else if (!enabled)
@@ -319,18 +331,19 @@ namespace RoundedTB
 
                 foreach (Types.Taskbar taskbar in taskbars)
                 {
-                    LocalPInvoke.SetWindowPos(taskbar.TaskbarHwnd, new IntPtr(-1), 0, 0, 0, 0, LocalPInvoke.SetWindowPosFlags.IgnoreMove | LocalPInvoke.SetWindowPosFlags.IgnoreResize);
+                    LocalPInvoke.SetWindowPos(taskbar.TaskbarHwnd, new IntPtr(-1), 0, 0, 0, 0,
+                        LocalPInvoke.SetWindowPosFlags.IgnoreMove | LocalPInvoke.SetWindowPosFlags.IgnoreResize | LocalPInvoke.SetWindowPosFlags.DoNotActivate);
                     if (workAreaMisconfigured)
                     {
                         Taskbar.SetTaskbarState(LocalPInvoke.AppBarStates.AutoHide, taskbar.TaskbarHwnd);
                         Taskbar.SetTaskbarState(LocalPInvoke.AppBarStates.AlwaysOnTop, taskbar.TaskbarHwnd);
                     }
-                    taskbarHeight = taskbar.TaskbarRect.Bottom - taskbar.TaskbarRect.Top;
-                    foreach (MonitorStuff.DisplayInfo display in displays)
+                    IntPtr monitor = LocalPInvoke.MonitorFromWindow(taskbar.TaskbarHwnd, 2);
+                    MonitorStuff.DisplayInfo display = displays.Find(d => d.Handle == monitor);
+                    if (display != null)
                     {
-                        LocalPInvoke.RECT workArea = display.MonitorArea;
-                        workArea.Bottom -= taskbarHeight;
-                        Interaction.SetWorkspace(workArea);
+                        LocalPInvoke.RECT restored = Taskbar.GetRestoredWorkArea(display.MonitorArea, taskbar.TaskbarRect);
+                        Taskbar.SetMonitorWorkArea(display.Handle, restored);
                     }
                 }
             }
@@ -390,6 +403,10 @@ namespace RoundedTB
             if (activeSettings.RemoveInsiderWatermark)
             {
                 SyncWatermarkState(initialDelayMs: 1500);
+            }
+            if (activeSettings.AutoHide > (int)Types.AutoHideMode.Off)
+            {
+                Task.Delay(500).ContinueWith(_ => Dispatcher.TryEnqueue(() => AutoHide(true, taskbarDetails)));
             }
         }
 

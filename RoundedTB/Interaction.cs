@@ -1,4 +1,4 @@
-﻿using Newtonsoft.Json;
+using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using System;
 using System.Collections.Generic;
@@ -313,9 +313,18 @@ namespace RoundedTB
             }
         }
 
-        public static bool SetWorkspace(LocalPInvoke.RECT rect)
+        // Ignore WM_SETTINGCHANGE(SPI_SETWORKAREA) broadcasts triggered by our own SetWorkspace calls
+        // so dynamically adjusting the work area doesn't tear down and rebuild all taskbar handles.
+        private static long suppressWorkAreaRedrawUntilTick;
+
+        public static bool SetWorkspace(LocalPInvoke.RECT rect, bool broadcast = true)
         {
-            bool result = LocalPInvoke.SystemParametersInfo(LocalPInvoke.SPI_SETWORKAREA, 0, ref rect, LocalPInvoke.SPIF_change);
+            int flags = broadcast ? LocalPInvoke.SPIF_change : 0;
+            if (broadcast)
+            {
+                Volatile.Write(ref suppressWorkAreaRedrawUntilTick, Environment.TickCount64 + 500);
+            }
+            bool result = LocalPInvoke.SystemParametersInfo(LocalPInvoke.SPI_SETWORKAREA, 0, ref rect, flags);
             if (!result)
             {
                 // Get error
@@ -374,7 +383,8 @@ namespace RoundedTB
                     break;
 
                 case WM_SETTINGCHANGE:
-                    if (wParam.ToInt32() == SPI_SETWORKAREA)
+                    if (wParam.ToInt32() == SPI_SETWORKAREA
+                        && Environment.TickCount64 >= Volatile.Read(ref suppressWorkAreaRedrawUntilTick))
                     {
                         mw.background?.RequestDisplayRedraw();
                     }

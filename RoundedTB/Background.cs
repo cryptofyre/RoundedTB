@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Diagnostics;
@@ -171,16 +171,40 @@ namespace RoundedTB
                             // Get the latest quick details of this taskbar
                             Types.Taskbar newTaskbar = Taskbar.GetQuickTaskbarRects(taskbars[current].TaskbarHwnd, taskbars[current].TrayHwnd, taskbars[current].AppListHwnd, taskbars[current].AppListXaml);
 
+                            bool needsMaximisedCheck = settings.FillOnMaximise || settings.AutoHide == (int)Types.AutoHideMode.OnMaximise;
+                            bool hasMaximisedWindow = needsMaximisedCheck && Taskbar.HasMaximizedWindow(taskbars[current].TaskbarHwnd);
+                            bool shouldFill = settings.FillOnMaximise && (hasMaximisedWindow || Taskbar.IsTaskSwitcherOpen(settings));
+                            bool shouldAutoHide = settings.AutoHide == (int)Types.AutoHideMode.Always
+                                || (settings.AutoHide == (int)Types.AutoHideMode.OnMaximise && hasMaximisedWindow);
 
-                            // If the taskbar's monitor has a maximised window, reset it so it's "filled"
-                            if (Taskbar.TaskbarShouldBeFilled(taskbars[current].TaskbarHwnd, settings))
+                            if (settings.AutoHide == (int)Types.AutoHideMode.OnMaximise)
                             {
-                                if (taskbars[current].Ignored == false)
+                                SyncOnMaximiseWorkArea(taskbars[current], newTaskbar.TaskbarRect, hasMaximisedWindow);
+                            }
+                            else
+                            {
+                                taskbars[current].WorkAreaExpanded = settings.AutoHide == (int)Types.AutoHideMode.Always;
+                                taskbars[current].WorkAreaSettleTicks = 0;
+                            }
+
+                            UpdateAutoHide(taskbars[current], newTaskbar.TaskbarRect, shouldAutoHide);
+
+                            // If the taskbar's monitor has a maximised window (or task switcher), clear its region so it's "filled"
+                            if (shouldFill)
+                            {
+                                if (!taskbars[current].IsFilled)
                                 {
-                                    Taskbar.ResetTaskbar(taskbars[current], settings);
+                                    Taskbar.ClearTaskbarRegion(taskbars[current], settings);
+                                    taskbars[current].IsFilled = true;
                                     taskbars[current].Ignored = true;
                                 }
                                 continue;
+                            }
+
+                            if (taskbars[current].IsFilled)
+                            {
+                                taskbars[current].IsFilled = false;
+                                taskbars[current].Ignored = true;
                             }
 
                             // Showhide tray on hover. The result goes into effectiveSettings, never into
@@ -224,90 +248,6 @@ namespace RoundedTB
                                 effectiveSettings = settings.ShallowCopy();
                                 effectiveSettings.ShowTray = hoverShowTray;
                                 effectiveSettings.ShowWidgets = hoverShowWidgets;
-                            }
-
-                            if (settings.AutoHide > 0)
-                            {
-                                LocalPInvoke.RECT currentTaskbarRect = taskbars[current].TaskbarRect;
-                                LocalPInvoke.GetCursorPos(out LocalPInvoke.POINT msPt);
-                                bool isHoveringOverTaskbar;
-                                if (taskbars[current].TaskbarHidden)
-                                {
-                                    currentTaskbarRect.Top = currentTaskbarRect.Bottom - 2;
-                                    isHoveringOverTaskbar = LocalPInvoke.PtInRect(ref currentTaskbarRect, msPt);
-
-                                }
-                                else
-                                {
-                                    isHoveringOverTaskbar = LocalPInvoke.PtInRect(ref currentTaskbarRect, msPt);
-                                }
-                                if (isHoveringOverTaskbar)
-                                {
-                                    Debug.WriteLine("___");
-                                }
-                                int animSpeed = 15;
-                                byte taskbarOpacity = 0;
-                                LocalPInvoke.GetLayeredWindowAttributes(taskbars[current].TaskbarHwnd, out _, out taskbarOpacity, out _);
-                                //Debug.WriteLine($"Taskbar opacity:  {taskbarOpacity}");
-                                if (isHoveringOverTaskbar && taskbarOpacity == 1)
-                                {
-                                    int style = LocalPInvoke.GetWindowLong(taskbars[current].TaskbarHwnd, LocalPInvoke.GWL_EXSTYLE).ToInt32();
-                                    if ((style & LocalPInvoke.WS_EX_TRANSPARENT) == LocalPInvoke.WS_EX_TRANSPARENT)
-                                    {
-                                        LocalPInvoke.SetWindowLong(taskbars[current].TaskbarHwnd, LocalPInvoke.GWL_EXSTYLE, LocalPInvoke.GetWindowLong(taskbars[current].TaskbarHwnd, LocalPInvoke.GWL_EXSTYLE).ToInt32() ^ LocalPInvoke.WS_EX_TRANSPARENT);
-                                    }
-                                    LocalPInvoke.SetLayeredWindowAttributes(taskbars[current].TaskbarHwnd, 0, 63, LocalPInvoke.LWA_ALPHA);
-                                    System.Threading.Thread.Sleep(animSpeed);
-                                    LocalPInvoke.SetLayeredWindowAttributes(taskbars[current].TaskbarHwnd, 0, 127, LocalPInvoke.LWA_ALPHA);
-                                    System.Threading.Thread.Sleep(animSpeed);
-                                    LocalPInvoke.SetLayeredWindowAttributes(taskbars[current].TaskbarHwnd, 0, 191, LocalPInvoke.LWA_ALPHA);
-                                    System.Threading.Thread.Sleep(animSpeed);
-                                    LocalPInvoke.SetLayeredWindowAttributes(taskbars[current].TaskbarHwnd, 0, 255, LocalPInvoke.LWA_ALPHA);
-                                    taskbars[current].Ignored = true;
-                                    taskbars[current].TaskbarHidden = false;
-                                    Debug.WriteLine("MouseOver TB");
-                                }
-                                else if (!isHoveringOverTaskbar && taskbarOpacity == 255)
-                                {
-                                    LocalPInvoke.SetLayeredWindowAttributes(taskbars[current].TaskbarHwnd, 0, 191, LocalPInvoke.LWA_ALPHA);
-                                    System.Threading.Thread.Sleep(animSpeed);
-                                    LocalPInvoke.SetLayeredWindowAttributes(taskbars[current].TaskbarHwnd, 0, 127, LocalPInvoke.LWA_ALPHA);
-                                    System.Threading.Thread.Sleep(animSpeed);
-                                    LocalPInvoke.SetLayeredWindowAttributes(taskbars[current].TaskbarHwnd, 0, 63, LocalPInvoke.LWA_ALPHA);
-                                    System.Threading.Thread.Sleep(animSpeed);
-                                    LocalPInvoke.SetLayeredWindowAttributes(taskbars[current].TaskbarHwnd, 0, 1, LocalPInvoke.LWA_ALPHA);
-                                    int style = LocalPInvoke.GetWindowLong(taskbars[current].TaskbarHwnd, LocalPInvoke.GWL_EXSTYLE).ToInt32();
-                                    if ((style & LocalPInvoke.WS_EX_TRANSPARENT) != LocalPInvoke.WS_EX_TRANSPARENT)
-                                    {
-                                        LocalPInvoke.SetWindowLong(taskbars[current].TaskbarHwnd, LocalPInvoke.GWL_EXSTYLE, LocalPInvoke.GetWindowLong(taskbars[current].TaskbarHwnd, LocalPInvoke.GWL_EXSTYLE).ToInt32() ^ LocalPInvoke.WS_EX_TRANSPARENT);
-                                    }
-                                    taskbars[current].Ignored = true;
-                                    taskbars[current].TaskbarHidden = true;
-                                    Debug.WriteLine("MouseOff TB");
-                                }
-                            }
-                            else
-                            {
-                                int animSpeed = 15;
-                                byte taskbarOpacity = 0;
-                                LocalPInvoke.GetLayeredWindowAttributes(taskbars[current].TaskbarHwnd, out _, out taskbarOpacity, out _);
-                                if (taskbarOpacity < 255)
-                                {
-                                    int style = LocalPInvoke.GetWindowLong(taskbars[current].TaskbarHwnd, LocalPInvoke.GWL_EXSTYLE).ToInt32();
-                                    if ((style & LocalPInvoke.WS_EX_TRANSPARENT) == LocalPInvoke.WS_EX_TRANSPARENT)
-                                    {
-                                        LocalPInvoke.SetWindowLong(taskbars[current].TaskbarHwnd, LocalPInvoke.GWL_EXSTYLE, LocalPInvoke.GetWindowLong(taskbars[current].TaskbarHwnd, LocalPInvoke.GWL_EXSTYLE).ToInt32() ^ LocalPInvoke.WS_EX_TRANSPARENT);
-                                    }
-                                    LocalPInvoke.SetLayeredWindowAttributes(taskbars[current].TaskbarHwnd, 0, 63, LocalPInvoke.LWA_ALPHA);
-                                    System.Threading.Thread.Sleep(animSpeed);
-                                    LocalPInvoke.SetLayeredWindowAttributes(taskbars[current].TaskbarHwnd, 0, 127, LocalPInvoke.LWA_ALPHA);
-                                    System.Threading.Thread.Sleep(animSpeed);
-                                    LocalPInvoke.SetLayeredWindowAttributes(taskbars[current].TaskbarHwnd, 0, 191, LocalPInvoke.LWA_ALPHA);
-                                    System.Threading.Thread.Sleep(animSpeed);
-                                    LocalPInvoke.SetLayeredWindowAttributes(taskbars[current].TaskbarHwnd, 0, 255, LocalPInvoke.LWA_ALPHA);
-                                    taskbars[current].Ignored = true;
-                                    taskbars[current].TaskbarHidden = false;
-                                }
                             }
 
 
@@ -426,6 +366,138 @@ namespace RoundedTB
                 }
             }
             return true;
+        }
+
+        private static void SyncOnMaximiseWorkArea(Types.Taskbar taskbar, LocalPInvoke.RECT taskbarRect, bool hasMaximisedWindow)
+        {
+            bool transitioned = taskbar.WorkAreaExpanded != hasMaximisedWindow;
+            if (!transitioned && (!hasMaximisedWindow || taskbar.WorkAreaSettleTicks <= 0))
+            {
+                return;
+            }
+
+            IntPtr monitor = LocalPInvoke.MonitorFromWindow(taskbar.TaskbarHwnd, 2);
+            MonitorStuff.MONITORINFO mi = new MonitorStuff.MONITORINFO
+            {
+                cbSize = (uint)System.Runtime.InteropServices.Marshal.SizeOf<MonitorStuff.MONITORINFO>(),
+            };
+            if (!MonitorStuff.GetMonitorInfo(monitor, ref mi))
+            {
+                return;
+            }
+
+            if (transitioned)
+            {
+                taskbar.WorkAreaExpanded = hasMaximisedWindow;
+                LocalPInvoke.RECT targetWorkArea = hasMaximisedWindow
+                    ? mi.rcMonitor
+                    : Taskbar.GetRestoredWorkArea(mi.rcMonitor, taskbarRect);
+                Taskbar.SetMonitorWorkArea(monitor, targetWorkArea, broadcast: false);
+                taskbar.WorkAreaSettleTicks = hasMaximisedWindow ? 5 : 0;
+            }
+
+            if (hasMaximisedWindow && taskbar.WorkAreaSettleTicks > 0)
+            {
+                taskbar.WorkAreaSettleTicks--;
+                Taskbar.ExpandMaximizedWindows(taskbar.TaskbarHwnd, mi.rcMonitor);
+            }
+        }
+
+        private static void UpdateAutoHide(Types.Taskbar taskbar, LocalPInvoke.RECT taskbarRect, bool shouldAutoHide)
+        {
+            const int animSpeed = 15;
+            if (shouldAutoHide)
+            {
+                EnsureLayered(taskbar.TaskbarHwnd);
+
+                LocalPInvoke.RECT hoverRect = taskbarRect;
+                if (taskbar.TaskbarHidden)
+                {
+                    hoverRect.Top = hoverRect.Bottom - 2;
+                }
+                LocalPInvoke.GetCursorPos(out LocalPInvoke.POINT msPt);
+                bool shouldReveal = LocalPInvoke.PtInRect(ref hoverRect, msPt) || Taskbar.IsStartMenuOpen(taskbar.TaskbarHwnd);
+
+                bool hasAlpha = LocalPInvoke.GetLayeredWindowAttributes(taskbar.TaskbarHwnd, out _, out byte taskbarOpacity, out uint flags)
+                    && (flags & LocalPInvoke.LWA_ALPHA) != 0;
+                if (!hasAlpha)
+                {
+                    taskbarOpacity = 255;
+                }
+
+                if (shouldReveal && taskbarOpacity < 255)
+                {
+                    FadeTaskbar(taskbar, show: true, animSpeed);
+                }
+                else if (!shouldReveal && taskbarOpacity > 1)
+                {
+                    FadeTaskbar(taskbar, show: false, animSpeed);
+                }
+                return;
+            }
+
+            bool isLayeredAlpha = LocalPInvoke.GetLayeredWindowAttributes(taskbar.TaskbarHwnd, out _, out byte currentOpacity, out uint currentFlags)
+                && (currentFlags & LocalPInvoke.LWA_ALPHA) != 0;
+            if (isLayeredAlpha && currentOpacity < 255)
+            {
+                FadeTaskbar(taskbar, show: true, animSpeed);
+            }
+            else if (taskbar.TaskbarHidden)
+            {
+                SetTransparent(taskbar.TaskbarHwnd, transparent: false);
+                taskbar.TaskbarHidden = false;
+                taskbar.Ignored = true;
+            }
+        }
+
+        private static void EnsureLayered(IntPtr hwnd)
+        {
+            int style = LocalPInvoke.GetWindowLong(hwnd, LocalPInvoke.GWL_EXSTYLE).ToInt32();
+            if ((style & LocalPInvoke.WS_EX_LAYERED) != LocalPInvoke.WS_EX_LAYERED)
+            {
+                LocalPInvoke.SetWindowLong(hwnd, LocalPInvoke.GWL_EXSTYLE, style | LocalPInvoke.WS_EX_LAYERED);
+                LocalPInvoke.SetLayeredWindowAttributes(hwnd, 0, 255, LocalPInvoke.LWA_ALPHA);
+            }
+        }
+
+        private static void SetTransparent(IntPtr hwnd, bool transparent)
+        {
+            int style = LocalPInvoke.GetWindowLong(hwnd, LocalPInvoke.GWL_EXSTYLE).ToInt32();
+            int target = transparent
+                ? style | LocalPInvoke.WS_EX_TRANSPARENT
+                : style & ~LocalPInvoke.WS_EX_TRANSPARENT;
+            if (target != style)
+            {
+                LocalPInvoke.SetWindowLong(hwnd, LocalPInvoke.GWL_EXSTYLE, target);
+            }
+        }
+
+        private static void FadeTaskbar(Types.Taskbar taskbar, bool show, int animSpeed)
+        {
+            if (show)
+            {
+                SetTransparent(taskbar.TaskbarHwnd, transparent: false);
+                LocalPInvoke.SetWindowPos(taskbar.TaskbarHwnd, new IntPtr(-1), 0, 0, 0, 0,
+                    LocalPInvoke.SetWindowPosFlags.IgnoreMove | LocalPInvoke.SetWindowPosFlags.IgnoreResize | LocalPInvoke.SetWindowPosFlags.DoNotActivate);
+            }
+
+            byte[] steps = show ? new byte[] { 63, 127, 191, 255 } : new byte[] { 191, 127, 63, 1 };
+            for (int i = 0; i < steps.Length; i++)
+            {
+                LocalPInvoke.SetLayeredWindowAttributes(taskbar.TaskbarHwnd, 0, steps[i], LocalPInvoke.LWA_ALPHA);
+                if (i < steps.Length - 1)
+                {
+                    System.Threading.Thread.Sleep(animSpeed);
+                }
+            }
+
+            if (!show)
+            {
+                SetTransparent(taskbar.TaskbarHwnd, transparent: true);
+            }
+            taskbar.Ignored = true;
+            taskbar.TaskbarHidden = !show;
+            Debug.WriteLine(show ? "MouseOver TB" : "MouseOff TB");
         }
 
         private void ResetRegenBackoff()

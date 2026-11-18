@@ -465,7 +465,8 @@ namespace RoundedTB
                 FillTaskSwitchToggle.IsOn = s.FillOnTaskSwitch;
                 HoverToggle.IsOn = s.ShowSegmentsOnHover;
                 CompositionToggle.IsOn = s.CompositionCompat;
-                AutoHideToggle.IsOn = s.AutoHide == 1;
+                AutoHideToggle.IsOn = s.AutoHide > (int)Types.AutoHideMode.Off;
+                AutoHideMaximisedToggle.IsOn = s.AutoHide == (int)Types.AutoHideMode.OnMaximise;
                 RoundHighlightsToggle.IsOn = s.RoundButtonHighlights;
                 BatteryWattageToggle.IsOn = s.ShowBatteryWattage;
                 WatermarkToggle.IsOn = s.RemoveInsiderWatermark;
@@ -546,6 +547,7 @@ namespace RoundedTB
             ShowTrayToggle.IsEnabled = !Settings.ShowSegmentsOnHover;
             ShowWidgetsToggle.IsEnabled = !Settings.ShowSegmentsOnHover;
             FillTaskSwitchToggle.IsEnabled = Settings.FillOnMaximise && host.isWindows11;
+            AutoHideMaximisedToggle.IsEnabled = Settings.AutoHide > (int)Types.AutoHideMode.Off;
         }
 
         private Types.SegmentSettings ReadMainShape()
@@ -721,6 +723,10 @@ namespace RoundedTB
             {
                 FillTaskSwitchToggle.IsOn = false;
             }
+            if (ReferenceEquals(sender, AutoHideToggle) && !AutoHideToggle.IsOn)
+            {
+                AutoHideMaximisedToggle.IsOn = false;
+            }
             loading = false;
 
             Types.Settings s = Settings;
@@ -731,7 +737,9 @@ namespace RoundedTB
             s.FillOnTaskSwitch = s.FillOnMaximise && FillTaskSwitchToggle.IsOn;
             s.ShowSegmentsOnHover = HoverToggle.IsOn;
             s.CompositionCompat = CompositionToggle.IsOn;
-            s.AutoHide = AutoHideToggle.IsOn ? 1 : 0;
+            s.AutoHide = AutoHideToggle.IsOn
+                ? (AutoHideMaximisedToggle.IsOn ? (int)Types.AutoHideMode.OnMaximise : (int)Types.AutoHideMode.Always)
+                : (int)Types.AutoHideMode.Off;
             s.RoundButtonHighlights = RoundHighlightsToggle.IsOn;
             s.ShowBatteryWattage = BatteryWattageToggle.IsOn;
             UpdateLabelsAndStates();

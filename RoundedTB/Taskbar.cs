@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -136,6 +136,18 @@ namespace RoundedTB
                 TrayRect = trayRectCheck,
                 AppListRect = appListRectCheck
             };
+        }
+
+        /// <summary>
+        /// Clears the custom window region on the specified taskbar without altering layered/opacity state.
+        /// </summary>
+        public static void ClearTaskbarRegion(Types.Taskbar taskbar, Types.Settings settings)
+        {
+            LocalPInvoke.SetWindowRgn(taskbar.TaskbarHwnd, IntPtr.Zero, true);
+            if (settings.CompositionCompat)
+            {
+                Interaction.UpdateTranslucentTB(taskbar.TaskbarHwnd);
+            }
         }
 
         /// <summary>
@@ -583,6 +595,258 @@ namespace RoundedTB
             return retVal;
         }
 
+        private static IntPtr cachedFgHwnd;
+        private static uint cachedFgPid;
+        private static bool cachedFgIsStartMenu;
+
+        /// <summary>
+        /// Checks whether the Windows Start menu (or Start search) is currently open on the taskbar's monitor.
+        /// </summary>
+        public static bool IsStartMenuOpen(IntPtr taskbarHwnd)
+        {
+            IntPtr fgHwnd = LocalPInvoke.GetForegroundWindow();
+            if (fgHwnd == IntPtr.Zero || !LocalPInvoke.IsWindowVisible(fgHwnd))
+            {
+                return false;
+            }
+            if (LocalPInvoke.MonitorFromWindow(fgHwnd, 2) != LocalPInvoke.MonitorFromWindow(taskbarHwnd, 2))
+            {
+                return false;
+            }
+            LocalPInvoke.DwmGetWindowAttribute(fgHwnd, LocalPInvoke.DWMWINDOWATTRIBUTE.Cloaked, out bool isCloaked, 0x4);
+            if (isCloaked)
+            {
+                return false;
+            }
+
+            LocalPInvoke.GetWindowThreadProcessId(fgHwnd, out uint pid);
+            if (pid == 0)
+            {
+                return false;
+            }
+            if (fgHwnd != cachedFgHwnd || pid != cachedFgPid)
+            {
+                cachedFgHwnd = fgHwnd;
+                cachedFgPid = pid;
+                cachedFgIsStartMenu = IsStartHostProcess(pid);
+            }
+            return cachedFgIsStartMenu;
+        }
+
+        private static bool IsStartHostProcess(uint pid)
+        {
+            IntPtr hProcess = LocalPInvoke.OpenProcess(LocalPInvoke.PROCESS_QUERY_LIMITED_INFORMATION, false, pid);
+            if (hProcess == IntPtr.Zero)
+            {
+                return false;
+            }
+            try
+            {
+                StringBuilder path = new StringBuilder(260);
+                int size = path.Capacity;
+                if (!LocalPInvoke.QueryFullProcessImageName(hProcess, 0, path, ref size))
+                {
+                    return false;
+                }
+                string exeName = System.IO.Path.GetFileName(path.ToString());
+                return string.Equals(exeName, "StartMenuExperienceHost.exe", StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(exeName, "SearchHost.exe", StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(exeName, "SearchApp.exe", StringComparison.OrdinalIgnoreCase);
+            }
+            finally
+            {
+                LocalPInvoke.CloseHandle(hProcess);
+            }
+        }
+
+        /// <summary>
+        /// Checks whether the Windows 11 Alt+Tab task switcher is currently open.
+        /// </summary>
+        public static bool IsTaskSwitcherOpen(Types.Settings settings)
+        {
+            if (!settings.FillOnTaskSwitch)
+            {
+                return false;
+            }
+            IntPtr topHwnd = LocalPInvoke.WindowFromPoint(new LocalPInvoke.POINT() { x = 0, y = 0 });
+            StringBuilder windowClass = new StringBuilder(1024);
+            try
+            {
+                LocalPInvoke.GetClassName(topHwnd, windowClass, 1024);
+                return windowClass.ToString() == "XamlExplorerHostIslandWindow";
+            }
+            catch (Exception)
+            {
+                return false;
+            }
+        }
+
+        private static bool IsMaximizedWindowOnMonitor(IntPtr windowHwnd, IntPtr taskbarHwnd, IntPtr taskbarMonitor)
+        {
+            if (windowHwnd == taskbarHwnd || !LocalPInvoke.IsWindowVisible(windowHwnd))
+            {
+                return false;
+            }
+            if (LocalPInvoke.MonitorFromWindow(windowHwnd, 2) != taskbarMonitor)
+            {
+                return false;
+            }
+            LocalPInvoke.DwmGetWindowAttribute(windowHwnd, LocalPInvoke.DWMWINDOWATTRIBUTE.Cloaked, out bool isCloaked, 0x4);
+            if (isCloaked)
+            {
+                return false;
+            }
+            LocalPInvoke.WINDOWPLACEMENT lpwndpl = LocalPInvoke.WINDOWPLACEMENT.Default;
+            return LocalPInvoke.GetWindowPlacement(windowHwnd, ref lpwndpl)
+                && lpwndpl.ShowCmd == LocalPInvoke.ShowWindowCommands.ShowMaximized;
+        }
+
+        /// <summary>
+        /// Checks whether there is a visible, uncloaked maximised window on the same monitor as the taskbar.
+        /// </summary>
+        public static bool HasMaximizedWindow(IntPtr taskbarHwnd)
+        {
+            IntPtr taskbarMonitor = LocalPInvoke.MonitorFromWindow(taskbarHwnd, 2);
+            foreach (IntPtr windowHwnd in Interaction.GetTopLevelWindows())
+            {
+                if (IsMaximizedWindowOnMonitor(windowHwnd, taskbarHwnd, taskbarMonitor))
+                {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        /// <summary>
+        /// Expands any maximised windows on the taskbar's monitor whose frame stops short of targetWorkArea.
+        /// </summary>
+        public static void ExpandMaximizedWindows(IntPtr taskbarHwnd, LocalPInvoke.RECT targetWorkArea)
+        {
+            IntPtr taskbarMonitor = LocalPInvoke.MonitorFromWindow(taskbarHwnd, 2);
+            foreach (IntPtr windowHwnd in Interaction.GetTopLevelWindows())
+            {
+                if (!IsMaximizedWindowOnMonitor(windowHwnd, taskbarHwnd, taskbarMonitor))
+                {
+                    continue;
+                }
+                if (!LocalPInvoke.GetWindowRect(windowHwnd, out LocalPInvoke.RECT winRect)
+                    || winRect.Right <= winRect.Left || winRect.Bottom <= winRect.Top)
+                {
+                    continue;
+                }
+                LocalPInvoke.RECT extBounds;
+                if (LocalPInvoke.DwmGetWindowAttribute(windowHwnd, LocalPInvoke.DWMWINDOWATTRIBUTE.ExtendedFrameBounds,
+                    out extBounds, Marshal.SizeOf<LocalPInvoke.RECT>()) != 0)
+                {
+                    extBounds = winRect;
+                }
+
+                int leftGap = Math.Max(0, extBounds.Left - targetWorkArea.Left);
+                int topGap = Math.Max(0, extBounds.Top - targetWorkArea.Top);
+                int rightGap = Math.Max(0, targetWorkArea.Right - extBounds.Right);
+                int bottomGap = Math.Max(0, targetWorkArea.Bottom - extBounds.Bottom);
+                if (leftGap == 0 && topGap == 0 && rightGap == 0 && bottomGap == 0)
+                {
+                    continue;
+                }
+
+                // Skip windows that aren't already snapped to the other three monitor edges (e.g. mid-animation).
+                int alignedEdges = 0;
+                if (Math.Abs(extBounds.Left - targetWorkArea.Left) <= 2) alignedEdges++;
+                if (Math.Abs(extBounds.Top - targetWorkArea.Top) <= 2) alignedEdges++;
+                if (Math.Abs(extBounds.Right - targetWorkArea.Right) <= 2) alignedEdges++;
+                if (Math.Abs(extBounds.Bottom - targetWorkArea.Bottom) <= 2) alignedEdges++;
+                if (alignedEdges < 3)
+                {
+                    continue;
+                }
+
+                LocalPInvoke.SetWindowPosFlags flags = LocalPInvoke.SetWindowPosFlags.IgnoreZOrder | LocalPInvoke.SetWindowPosFlags.DoNotActivate;
+                if (leftGap == 0 && topGap == 0)
+                {
+                    flags |= LocalPInvoke.SetWindowPosFlags.IgnoreMove;
+                }
+
+                LocalPInvoke.SetWindowPos(
+                    windowHwnd,
+                    IntPtr.Zero,
+                    winRect.Left - leftGap,
+                    winRect.Top - topGap,
+                    (winRect.Right - winRect.Left) + leftGap + rightGap,
+                    (winRect.Bottom - winRect.Top) + topGap + bottomGap,
+                    flags);
+            }
+        }
+
+        public static bool RectsEqual(LocalPInvoke.RECT a, LocalPInvoke.RECT b)
+        {
+            return a.Left == b.Left && a.Top == b.Top && a.Right == b.Right && a.Bottom == b.Bottom;
+        }
+
+        /// <summary>
+        /// Computes a monitor's normal work area with space reserved for the given taskbar.
+        /// </summary>
+        public static LocalPInvoke.RECT GetRestoredWorkArea(LocalPInvoke.RECT monitorRect, LocalPInvoke.RECT taskbarRect)
+        {
+            LocalPInvoke.RECT workArea = monitorRect;
+            if (taskbarRect.Right <= taskbarRect.Left || taskbarRect.Bottom <= taskbarRect.Top)
+            {
+                return workArea;
+            }
+            bool horizontal = (taskbarRect.Right - taskbarRect.Left) >= (taskbarRect.Bottom - taskbarRect.Top);
+            if (horizontal && taskbarRect.Top >= (monitorRect.Top + monitorRect.Bottom) / 2)
+            {
+                workArea.Bottom -= taskbarRect.Bottom - taskbarRect.Top;
+            }
+            else if (horizontal)
+            {
+                workArea.Top += taskbarRect.Bottom - taskbarRect.Top;
+            }
+            else if (taskbarRect.Left >= (monitorRect.Left + monitorRect.Right) / 2)
+            {
+                workArea.Right -= taskbarRect.Right - taskbarRect.Left;
+            }
+            else
+            {
+                workArea.Left += taskbarRect.Right - taskbarRect.Left;
+            }
+            return workArea;
+        }
+
+        /// <summary>
+        /// Sets the monitor's work area if it differs from targetWorkArea. Returns true if updated.
+        /// </summary>
+        public static bool SetMonitorWorkArea(IntPtr monitorHandle, LocalPInvoke.RECT targetWorkArea, bool broadcast = true)
+        {
+            MonitorStuff.MONITORINFO mi = new MonitorStuff.MONITORINFO
+            {
+                cbSize = (uint)Marshal.SizeOf<MonitorStuff.MONITORINFO>(),
+            };
+            if (MonitorStuff.GetMonitorInfo(monitorHandle, ref mi) && RectsEqual(mi.rcWork, targetWorkArea))
+            {
+                return false;
+            }
+            Interaction.SetWorkspace(targetWorkArea, broadcast);
+            return true;
+        }
+
+        /// <summary>
+        /// Clears Windows' built-in taskbar auto-hide only if enabled, so Explorer does not reset custom work areas.
+        /// </summary>
+        public static void EnsureAlwaysOnTopState(IntPtr hwnd)
+        {
+            LocalPInvoke.APPBARDATA msgData = new LocalPInvoke.APPBARDATA
+            {
+                cbSize = (uint)Marshal.SizeOf<LocalPInvoke.APPBARDATA>(),
+                hWnd = hwnd,
+            };
+            int state = LocalPInvoke.SHAppBarMessage(LocalPInvoke.ABM.GetState, ref msgData).ToInt32();
+            if ((state & LocalPInvoke.ABS.Autohide) != 0)
+            {
+                SetTaskbarState(LocalPInvoke.AppBarStates.AlwaysOnTop, hwnd);
+            }
+        }
+
         /// <summary>
         /// Checks if the given taskbar should be filled to the edge of the screen.
         /// </summary>
@@ -591,47 +855,7 @@ namespace RoundedTB
         /// </returns>
         public static bool TaskbarShouldBeFilled(IntPtr taskbarHwnd, Types.Settings settings)
         {
-            bool retVal = false;
-
-            if (settings.FillOnMaximise)
-            {
-                // Attempt to check for if alt+tab/task switcher is open (Windows 11 only)
-                IntPtr topHwnd = LocalPInvoke.WindowFromPoint(new LocalPInvoke.POINT() { x = 0, y = 0 });
-                StringBuilder windowClass = new StringBuilder(1024);
-                try
-                {
-                    LocalPInvoke.GetClassName(topHwnd, windowClass, 1024);
-
-                    if (windowClass.ToString() == "XamlExplorerHostIslandWindow" && settings.FillOnTaskSwitch)
-                    {
-                        return true;
-                    }
-                }
-                catch (Exception) { }
-
-                List<IntPtr> windowList = Interaction.GetTopLevelWindows();
-                foreach (IntPtr windowHwnd in windowList)
-                {
-                    if (LocalPInvoke.IsWindowVisible(windowHwnd))
-                    {
-                        if (LocalPInvoke.MonitorFromWindow(taskbarHwnd, 2) == LocalPInvoke.MonitorFromWindow(windowHwnd, 2))
-                        {
-                            LocalPInvoke.DwmGetWindowAttribute(windowHwnd, LocalPInvoke.DWMWINDOWATTRIBUTE.Cloaked, out bool isCloaked, 0x4);
-                            if (!isCloaked)
-                            {
-                                LocalPInvoke.WINDOWPLACEMENT lpwndpl = new LocalPInvoke.WINDOWPLACEMENT();
-                                LocalPInvoke.GetWindowPlacement(windowHwnd, ref lpwndpl);
-                                if (lpwndpl.ShowCmd == LocalPInvoke.ShowWindowCommands.ShowMaximized)
-                                {
-                                    retVal = true;
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-
-            return retVal;
+            return settings.FillOnMaximise && (IsTaskSwitcherOpen(settings) || HasMaximizedWindow(taskbarHwnd));
         }
 
         /// <summary>
