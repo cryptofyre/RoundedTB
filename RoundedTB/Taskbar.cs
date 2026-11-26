@@ -196,6 +196,7 @@ namespace RoundedTB
                 };
 
                 region = LocalPInvoke.CreateRoundRectRgn(taskbarEffectiveRegion.Left, taskbarEffectiveRegion.Top, taskbarEffectiveRegion.Width, taskbarEffectiveRegion.Height, taskbarEffectiveRegion.CornerRadius, taskbarEffectiveRegion.CornerRadius);
+                AddAutoHideStrip(taskbar, region, GetAutoHideStrip(taskbar.TaskbarHwnd, out _));
                 LocalPInvoke.SetWindowRgn(taskbar.TaskbarHwnd, region, true);
                 if (settings.CompositionCompat)
                 {
@@ -356,6 +357,7 @@ namespace RoundedTB
 
 
                 // Apply the final region to the taskbar
+                AddAutoHideStrip(taskbar, workingRegion, GetAutoHideStrip(taskbar.TaskbarHwnd, out _));
                 LocalPInvoke.SetWindowRgn(taskbar.TaskbarHwnd, workingRegion, true);
                 if (settings.CompositionCompat)
                 {
@@ -376,6 +378,68 @@ namespace RoundedTB
                 LocalPInvoke.DeleteObject(workingRegion);
             }
 
+        }
+
+        /// <summary>
+        /// Explorer only brings an auto-hidden taskbar back once the cursor, or a drag, hit-tests to the part left on screen.
+        /// </summary>
+        public static LocalPInvoke.RECT GetAutoHideStrip(IntPtr taskbarHwnd, out bool slid)
+        {
+            if (!LocalPInvoke.GetWindowRect(taskbarHwnd, out LocalPInvoke.RECT taskbarRect))
+            {
+                throw new InvalidOperationException($"GetWindowRect failed for taskbar {taskbarHwnd}");
+            }
+            IntPtr monitor = LocalPInvoke.MonitorFromWindow(taskbarHwnd, 2);
+            MonitorStuff.MONITORINFO mi = new MonitorStuff.MONITORINFO
+            {
+                cbSize = (uint)Marshal.SizeOf<MonitorStuff.MONITORINFO>(),
+            };
+            if (!MonitorStuff.GetMonitorInfo(monitor, ref mi))
+            {
+                throw new InvalidOperationException($"GetMonitorInfo failed for taskbar {taskbarHwnd}");
+            }
+
+            LocalPInvoke.RECT onScreen = new LocalPInvoke.RECT
+            {
+                Left = Math.Max(taskbarRect.Left, mi.rcMonitor.Left),
+                Top = Math.Max(taskbarRect.Top, mi.rcMonitor.Top),
+                Right = Math.Min(taskbarRect.Right, mi.rcMonitor.Right),
+                Bottom = Math.Min(taskbarRect.Bottom, mi.rcMonitor.Bottom),
+            };
+            slid = !RectsEqual(onScreen, taskbarRect);
+            bool cursorOnStrip = LocalPInvoke.GetCursorPos(out LocalPInvoke.POINT cursor) && LocalPInvoke.PtInRect(ref onScreen, cursor);
+            bool buttonDown = (LocalPInvoke.GetAsyncKeyState(LocalPInvoke.VK_LBUTTON) & 0x8000) != 0
+                || (LocalPInvoke.GetAsyncKeyState(LocalPInvoke.VK_RBUTTON) & 0x8000) != 0;
+            if (!slid || onScreen.Right <= onScreen.Left || onScreen.Bottom <= onScreen.Top || (cursorOnStrip && !buttonDown))
+            {
+                return default;
+            }
+
+            return new LocalPInvoke.RECT
+            {
+                Left = onScreen.Left - taskbarRect.Left,
+                Top = onScreen.Top - taskbarRect.Top,
+                Right = onScreen.Right - taskbarRect.Left,
+                Bottom = onScreen.Bottom - taskbarRect.Top,
+            };
+        }
+
+        public static void AddAutoHideStrip(Types.Taskbar taskbar, IntPtr region, LocalPInvoke.RECT strip)
+        {
+            taskbar.AutoHideStrip = default;
+            if (strip.Right <= strip.Left || LocalPInvoke.RectInRegion(region, ref strip))
+            {
+                return;
+            }
+
+            IntPtr stripRegion = LocalPInvoke.CreateRectRgn(strip.Left, strip.Top, strip.Right, strip.Bottom);
+            int combined = LocalPInvoke.CombineRgn(region, region, stripRegion, 2);
+            LocalPInvoke.DeleteObject(stripRegion);
+            if (combined == 0)
+            {
+                throw new InvalidOperationException($"CombineRgn failed adding the auto-hide strip to taskbar {taskbar.TaskbarHwnd}");
+            }
+            taskbar.AutoHideStrip = strip;
         }
 
         /// <summary>

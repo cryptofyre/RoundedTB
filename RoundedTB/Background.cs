@@ -292,7 +292,66 @@ namespace RoundedTB
                         }
                         handlesWereValid = handlesValid;
 
-                        System.Threading.Thread.Sleep(100);
+                        const int tickMs = 100;
+                        const int pollMs = 10;
+
+                        // Explorer slides the taskbar back 85-110ms after the cursor reaches the strip, and SetWindowRgn blocks mid-slide.
+                        Stopwatch waited = Stopwatch.StartNew();
+                        while (waited.ElapsedMilliseconds < tickMs)
+                        {
+                            bool anySlid = false;
+                            foreach (Types.Taskbar taskbar in taskbars)
+                            {
+                                if (!LocalPInvoke.IsWindow(taskbar.TaskbarHwnd))
+                                {
+                                    continue;
+                                }
+                                LocalPInvoke.RECT strip = Taskbar.GetAutoHideStrip(taskbar.TaskbarHwnd, out bool slid);
+                                anySlid |= slid;
+                                LocalPInvoke.RECT oldStrip = taskbar.AutoHideStrip;
+                                if (Taskbar.RectsEqual(strip, oldStrip))
+                                {
+                                    continue;
+                                }
+
+                                IntPtr region = LocalPInvoke.CreateRectRgn(0, 0, 0, 0);
+                                if (LocalPInvoke.GetWindowRgn(taskbar.TaskbarHwnd, region) == 0)
+                                {
+                                    LocalPInvoke.DeleteObject(region);
+                                    taskbar.AutoHideStrip = default;
+                                    continue;
+                                }
+                                if (oldStrip.Right > oldStrip.Left)
+                                {
+                                    IntPtr oldStripRegion = LocalPInvoke.CreateRectRgn(oldStrip.Left, oldStrip.Top, oldStrip.Right, oldStrip.Bottom);
+                                    int combined = LocalPInvoke.CombineRgn(region, region, oldStripRegion, 4);
+                                    LocalPInvoke.DeleteObject(oldStripRegion);
+                                    if (combined == 0)
+                                    {
+                                        LocalPInvoke.DeleteObject(region);
+                                        throw new InvalidOperationException($"CombineRgn failed removing the auto-hide strip from taskbar {taskbar.TaskbarHwnd}");
+                                    }
+                                }
+
+                                Taskbar.AddAutoHideStrip(taskbar, region, strip);
+                                if (Taskbar.RectsEqual(taskbar.AutoHideStrip, oldStrip))
+                                {
+                                    LocalPInvoke.DeleteObject(region);
+                                    continue;
+                                }
+                                if (LocalPInvoke.SetWindowRgn(taskbar.TaskbarHwnd, region, true) == 0)
+                                {
+                                    LocalPInvoke.DeleteObject(region);
+                                    throw new InvalidOperationException($"SetWindowRgn failed for taskbar {taskbar.TaskbarHwnd}");
+                                }
+                            }
+                            if (!anySlid)
+                            {
+                                System.Threading.Thread.Sleep((int)Math.Max(0, tickMs - waited.ElapsedMilliseconds));
+                                break;
+                            }
+                            System.Threading.Thread.Sleep(pollMs);
+                        }
                     }
                 }
                 catch (Exception ex)
