@@ -7,7 +7,7 @@
 
 </div>
 
-RoundedTB gives the Windows 11 taskbar rounded corners and margins, or splits it into floating segments around your apps and system tray. It lives in the tray, and every setting applies the moment you change it.
+RoundedTB gives the Windows 11 taskbar rounded corners and margins, or splits it into floating segments around your apps and system tray.
 
 ## Install
 
@@ -43,7 +43,7 @@ Download the portable zip for your PC from the [latest release](https://github.c
 - **Dynamic mode may not cut off the left side on first run** if you've never changed the taskbar alignment. Switch it to Left and back to Center.
 - **TranslucentTB** works with the compatibility option enabled, but may flicker when the taskbar updates.
 
-If the taskbar ever looks wrong, quit RoundedTB from its tray icon, or press <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>Esc</kbd> and restart Windows Explorer. RoundedTB makes no permanent changes, so that always puts things back.
+If the taskbar ever looks wrong, quit RoundedTB from its tray icon, or press <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>Esc</kbd> and restart Windows Explorer.
 
 ## Contributing
 
